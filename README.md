@@ -5,7 +5,7 @@ An autonomous, offline AI NOC Copilot that predicts network failures before oper
 ## Team
 - Charan Teja
 - Yogesh
-- Aranya
+- Aranya Roy
 - Pradyumna
 
 ## Problem
