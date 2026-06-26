@@ -21,7 +21,6 @@ produces realistic telemetry; it does NOT analyze it (that's Phase 2/3).
 - No direct commits to `master`
 - Work on a branch → commit → push → PR (base: master ← compare: branch) → merge
 - `git pull origin master` before starting work each day
-- Charan owns master / merges PRs
 - `.gitignore` excludes Containerlab runtime dirs (clab-*/)
 
 ## Phase 1 Chunk Breakdown
