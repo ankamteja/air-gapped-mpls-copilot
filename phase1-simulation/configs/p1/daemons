@@ -1,0 +1,15 @@
+zebra=yes
+ospfd=yes
+ldpd=yes
+bgpd=no
+ospf6d=no
+ripd=no
+ripngd=no
+isisd=no
+pimd=no
+nhrpd=no
+eigrpd=no
+sharpd=no
+pbrd=no
+bfdd=no
+fabricd=no
