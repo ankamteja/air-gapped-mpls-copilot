@@ -239,7 +239,7 @@ def train_classifier(X_all, y_all, seq_len, epochs, batch_size, lr):
         total_loss, correct, total = 0.0, 0, 0
         for batch_x, batch_y in train_loader:
             optimizer.zero_grad()
-            logits, _ = model(batch_x)
+            logits, _, _ = model(batch_x)
             loss = criterion(logits, batch_y)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -255,7 +255,7 @@ def train_classifier(X_all, y_all, seq_len, epochs, batch_size, lr):
         val_correct, val_total = 0, 0
         with torch.no_grad():
             for batch_x, batch_y in val_loader:
-                logits, _ = model(batch_x)
+                logits, _, _ = model(batch_x)
                 preds = logits.argmax(dim=1)
                 val_correct += (preds == batch_y).sum().item()
                 val_total += batch_y.size(0)
@@ -428,6 +428,7 @@ def main():
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001)")
     parser.add_argument("--synthetic", action="store_true", help="Generate and train on synthetic data")
     parser.add_argument("--no-augment", action="store_true", help="Skip minority class augmentation")
+    parser.add_argument("--classifier-only", action="store_true", help="Retrain only the classifier (skip autoencoder + regressor)")
     args = parser.parse_args()
 
     data_path = args.data
@@ -455,19 +456,21 @@ def main():
         print(f"    GPU: {torch.cuda.get_device_name(0)}")
         print(f"    VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
-    # 1. Autoencoder — healthy data only
-    healthy_mask = (y == 0)
-    X_healthy = X_norm[healthy_mask]
-    if len(X_healthy) > args.seq_len:
-        train_autoencoder(X_healthy, args.seq_len, args.epochs, args.batch_size, args.lr)
-    else:
-        print("[!] Not enough healthy samples for autoencoder.")
+    if not args.classifier_only:
+        # 1. Autoencoder — healthy data only
+        healthy_mask = (y == 0)
+        X_healthy = X_norm[healthy_mask]
+        if len(X_healthy) > args.seq_len:
+            train_autoencoder(X_healthy, args.seq_len, args.epochs, args.batch_size, args.lr)
+        else:
+            print("[!] Not enough healthy samples for autoencoder.")
 
     # 2. Classifier — all data, with augmentation
     train_classifier(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr)
 
-    # 3. TTF Regressor
-    train_regressor(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr)
+    if not args.classifier_only:
+        # 3. TTF Regressor
+        train_regressor(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr)
 
     print(f"\n{'='*60}")
     print(f"[+] All models saved to {SAVE_DIR}/")

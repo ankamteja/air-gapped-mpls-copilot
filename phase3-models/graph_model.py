@@ -1,5 +1,7 @@
-import networkx as nx
+import os
 import copy
+import yaml
+import networkx as nx
 
 # =============================================================================
 # graph_model.py — Graph-Analytical Engine & Clonal State-Space Search
@@ -7,10 +9,35 @@ import copy
 # Simulates the network topology analytically using NetworkX. Evaluates
 # projected traffic matrices against routing permutations ("clones") to
 # detect queue saturation and select optimal SLA-compliant paths.
+# Per-service SLA thresholds are loaded from config/sla_config.yaml.
 # =============================================================================
+
+_SLA_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "config", "sla_config.yaml"
+)
+
+
+def _load_sla_config():
+    try:
+        with open(_SLA_CONFIG_PATH) as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("services", {}), cfg.get("default", {"latency_ms_max": 200})
+    except FileNotFoundError:
+        return {}, {"latency_ms_max": 200}
+
+
+# Traffic flow → service class mapping (source, dest) → service tag
+_FLOW_SERVICE_MAP = {
+    ("ce-branch1", "ce-dc"):   "voip",          # VoIP + DB replication
+    ("ce-branch2", "ce-hub"):  "bulk_transfer",  # VTC video
+    ("ce-branch2", "ce-dc"):   "database",       # SSH / admin
+}
+
 
 class ClonalGraphEngine:
     def __init__(self):
+        self.sla_services, self.sla_default = _load_sla_config()
+
         # Create base physical topology
         self.base_graph = nx.DiGraph()
         
@@ -135,9 +162,14 @@ class ClonalGraphEngine:
                 path_delays[f"{src}->{dst}"] = path_delay
                 total_delay += path_delay
                 
-                # Check SLA latency threshold (e.g., > 100ms for VoIP ce-branch1 -> ce-dc)
-                if src == "ce-branch1" and dst == "ce-dc" and path_delay > 80:
-                    sla_violations += 1
+                # Per-service SLA latency check
+                svc_tag = _FLOW_SERVICE_MAP.get((src, dst), None)
+                svc_sla = self.sla_services.get(svc_tag, self.sla_default) if svc_tag else self.sla_default
+                lat_max = svc_sla.get("latency_ms_max", 200)
+                priority = svc_sla.get("priority", 99)
+                if path_delay > lat_max:
+                    # Higher-priority services get proportionally larger penalty
+                    sla_violations += (path_delay - lat_max) / lat_max * (10 / max(priority, 1))
                 
                 # Allocate load on edges along the path
                 for i in range(len(path)-1):

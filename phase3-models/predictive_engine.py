@@ -81,11 +81,20 @@ class Attention(nn.Module):
 
 class LSTMAttentionClassifier(nn.Module):
     """
-    Supervised Sequence Classifier with Attention.
+    Supervised Sequence Classifier with Attention + Feature Heatmap.
     Predicts the exact type of network failure (e.g., OSPF flap, congestion).
+
+    Returns (logits, attn_weights, feature_weights):
+      - logits         [B, NumClasses]  — classification scores
+      - attn_weights   [B, SeqLen, 1]  — per-timestep importance (existing)
+      - feature_weights [B, Features]  — per-feature importance (v4 heatmap)
+
+    feature_weights are READ-ONLY: they never feed the EPE or graph model.
+    They are exposed via ACP top_features for operator-facing explainability.
     """
     def __init__(self, num_features, hidden_dim, num_classes):
         super(LSTMAttentionClassifier, self).__init__()
+        self.num_features = num_features
         self.lstm = nn.LSTM(
             input_size=num_features,
             hidden_size=hidden_dim,
@@ -94,8 +103,12 @@ class LSTMAttentionClassifier(nn.Module):
             bidirectional=True,
             dropout=0.2
         )
-        self.attention = Attention(hidden_dim * 2) # *2 for bidirectionality
-        
+        self.attention = Attention(hidden_dim * 2)  # *2 for bidirectionality
+
+        # Feature heatmap head: projects context vector → per-feature importance
+        # Lightweight (hidden_dim*2 → num_features) — read-only, never in decision path
+        self.feature_heatmap = nn.Linear(hidden_dim * 2, num_features)
+
         self.classifier = nn.Sequential(
             nn.Linear(hidden_dim * 2, 64),
             nn.ReLU(),
@@ -105,10 +118,13 @@ class LSTMAttentionClassifier(nn.Module):
 
     def forward(self, x):
         # x shape: [Batch, SeqLen, Features]
-        lstm_out, _ = self.lstm(x) # [Batch, SeqLen, HiddenDim * 2]
-        context, attn_weights = self.attention(lstm_out) # [Batch, HiddenDim * 2]
-        logits = self.classifier(context) # [Batch, NumClasses]
-        return logits, attn_weights
+        lstm_out, _ = self.lstm(x)                       # [B, SeqLen, HiddenDim*2]
+        context, attn_weights = self.attention(lstm_out)  # [B, HiddenDim*2]
+        logits = self.classifier(context)                 # [B, NumClasses]
+        feature_weights = torch.softmax(
+            self.feature_heatmap(context), dim=-1         # [B, Features]
+        )
+        return logits, attn_weights, feature_weights
 
 
 class TimeToFailureRegressor(nn.Module):

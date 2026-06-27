@@ -46,12 +46,52 @@ SAVE_DIR = os.path.join(os.path.dirname(__file__), "saved")
 ACP_LOG_DIR = os.path.join(os.path.dirname(__file__), "acp_logs")
 
 
+class EMAThreshold:
+    """
+    Self-calibrating anomaly threshold using exponential moving average.
+    Tracks EMA mean and variance of reconstruction loss; threshold =
+    ema_mean + k * ema_std (Bollinger-band style).  Replaces the fixed
+    3× multiplier used in v3.
+    """
+    def __init__(self, alpha=0.05, k=3.0, warmup=50):
+        self.alpha = alpha      # EMA decay (smaller = longer memory)
+        self.k = k              # std multiplier
+        self.warmup = warmup    # samples before EMA kicks in
+        self._ema_mean = None
+        self._ema_var = None
+        self._n = 0
+        self._static_threshold = None  # fallback from checkpoint
+
+    def set_static(self, v):
+        self._static_threshold = v
+
+    def update(self, loss):
+        self._n += 1
+        if self._ema_mean is None:
+            self._ema_mean = loss
+            self._ema_var = 0.0
+        else:
+            delta = loss - self._ema_mean
+            self._ema_mean += self.alpha * delta
+            self._ema_var = (1 - self.alpha) * (self._ema_var + self.alpha * delta ** 2)
+
+    @property
+    def threshold(self):
+        if self._n < self.warmup or self._ema_var is None:
+            return self._static_threshold or 0.01
+        return self._ema_mean + self.k * (self._ema_var ** 0.5)
+
+    def is_anomaly(self, loss):
+        self.update(loss)
+        return loss > self.threshold
+
+
 class AetherInferenceEngine:
     def __init__(self):
         self.autoencoder = None
         self.classifier = None
         self.regressor = None
-        self.ae_threshold = 0.01
+        self.ema_threshold = EMAThreshold(alpha=0.05, k=3.0, warmup=50)
         self.seq_len = 30
         self.num_features = 0
         self.norm_mins = None
@@ -71,7 +111,7 @@ class AetherInferenceEngine:
             checkpoint = torch.load(ae_path, map_location=DEVICE, weights_only=True)
             self.seq_len = checkpoint["seq_len"]
             self.num_features = checkpoint["num_features"]
-            self.ae_threshold = checkpoint.get("threshold", 0.01)
+            self.ema_threshold.set_static(checkpoint.get("threshold", 0.01))
             self.autoencoder = LSTMAutoencoder(
                 self.seq_len, self.num_features, checkpoint["hidden_dim"]
             ).to(DEVICE)
@@ -167,16 +207,17 @@ class AetherInferenceEngine:
             with torch.no_grad():
                 reconstructed = self.autoencoder(tensor_input)
                 ae_loss = torch.nn.functional.mse_loss(reconstructed, tensor_input).item()
-                ae_anomaly = ae_loss > self.ae_threshold
+                ae_anomaly = self.ema_threshold.is_anomaly(ae_loss)
 
         # 2. Fault Classification
         fault_class = "Healthy"
         action = "NO_ACTION"
         confidence = 1.0
         attn_weights = None
+        feature_weights = None
         if self.classifier:
             with torch.no_grad():
-                logits, attn = self.classifier(tensor_input)
+                logits, attn, feat_w = self.classifier(tensor_input)
                 probs = torch.softmax(logits, dim=1)
                 class_id = probs.argmax(dim=1).item()
                 confidence = probs[0, class_id].item()
@@ -184,6 +225,7 @@ class AetherInferenceEngine:
                 fault_class = info["display"]
                 action = info["action"]
                 attn_weights = attn.squeeze().cpu().numpy()
+                feature_weights = feat_w.squeeze().cpu().numpy()
 
         # 3. Time-to-Failure Estimation
         ttf = -1.0
@@ -191,6 +233,12 @@ class AetherInferenceEngine:
             with torch.no_grad():
                 ttf_pred = self.regressor(tensor_input)
                 ttf = max(0.0, ttf_pred.item())
+
+        # Attach attention heatmap top-5 features to ACP (read-only explainability)
+        if feature_weights is not None and self.columns:
+            top5_idx = feature_weights.argsort()[-5:][::-1]
+            top5_names = [self.columns[i] for i in top5_idx if i < len(self.columns)]
+            acp.set_top_features(top5_names)
 
         # Set ML results in ACP
         ml_detected = ae_anomaly or fault_class != "Healthy"

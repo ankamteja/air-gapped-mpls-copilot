@@ -1,8 +1,13 @@
 import json
+import os
+import jsonlines
 from datetime import datetime, timezone
 import uuid
 
 from taxonomy import DISPLAY_TO_INFO
+
+IKB_DIR = os.path.join(os.path.dirname(__file__), "ikb")
+IKB_LOG = os.path.join(IKB_DIR, "incidents.jsonl")
 
 # =============================================================================
 # acp_manager.py — Anomaly Context Packet (ACP) Struct & Schema Manager
@@ -123,6 +128,37 @@ class AnomalyContextPacket:
             "execution_mode": "RECOMMEND_ONLY"
         }
         self.mitigation_commands = []
+        self.top_features = []           # v4: attention heatmap top-5 feature names
+        self.service_sla_tag = "default" # v4: which SLA class triggered this ACP
+        self.digital_twin_divergence = None  # v4: divergence score from digital twin (float or None)
+        self.operator_feedback = None    # v4: "accepted" | "rejected" | None
+        self._auto_log()                 # v4: log every ACP on creation
+
+    def _auto_log(self):
+        """Append ACP stub to the flat-file IKB immediately on creation (Task 9)."""
+        try:
+            os.makedirs(IKB_DIR, exist_ok=True)
+            entry = {
+                "acp_id": self.acp_id,
+                "timestamp": self.timestamp,
+                "severity": self.severity,
+                "trigger_source": self.trigger_source,
+                "operator_feedback": None,
+            }
+            with open(IKB_LOG, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass  # never crash the inference path due to logging failure
+
+    def set_top_features(self, feature_names):
+        """Store attention heatmap top-5 features."""
+        self.top_features = list(feature_names)
+
+    def set_service_sla_tag(self, tag):
+        self.service_sla_tag = str(tag)
+
+    def set_digital_twin_divergence(self, score):
+        self.digital_twin_divergence = float(score) if score is not None else None
 
     def set_telemetry(self, nodes_data):
         self.telemetry_snapshot["nodes"] = nodes_data
@@ -181,4 +217,8 @@ class AnomalyContextPacket:
         acp.graph_analysis = data["graph_analysis"]
         acp.corroboration = data["corroboration"]
         acp.mitigation_commands = data.get("mitigation_commands", [])
+        acp.top_features = data.get("top_features", [])
+        acp.service_sla_tag = data.get("service_sla_tag", "default")
+        acp.digital_twin_divergence = data.get("digital_twin_divergence", None)
+        acp.operator_feedback = data.get("operator_feedback", None)
         return acp
