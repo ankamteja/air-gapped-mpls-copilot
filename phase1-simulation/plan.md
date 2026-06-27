@@ -27,7 +27,7 @@ produces realistic telemetry; it does NOT analyze it (that's Phase 2/3).
 ## Phase 1 Chunk Breakdown
 - [x] **Chunk 1 — Minimal topology** (2 FRR routers, 1 link, ping works)
 - [x] **Chunk 2 — MPLS core** (2 PE + 1 P, OSPF reachability, LDP labels, verified LSP)
-- [ ] **Chunk 3 — CE sites + VPN** (2 branch + 1 hub + 1 DC, L3VPN/VRF, PE-CE BGP)
+- [x] **Chunk 3 — CE sites + VPN** (2 branch + 1 hub + 1 DC, L3VPN/VRF, PE-CE BGP)
 - [ ] **Chunk 4 — Traffic generation** (iperf3 → VoIP/bulk/web traffic profiles)
 - [ ] **Chunk 5 — Fault injection** (Python + tc netem, gradual degradation, labeled)
 
@@ -97,6 +97,10 @@ After Chunk 2 merges, all 3 teammates reproduce the MPLS core before Chunk 3.
 
 Script self-verifies — ends with LDP OPERATIONAL + 0% packet loss if the machine is good.
 
-## Next Session
-Chunk 3 — CE sites + L3VPN (VRF segmentation, PE-CE BGP). Build after Chunk 2 team
-checkpoint passes.
+### Chunk 3 — DONE (branch charan/chunk3-l3vpn)
+4 CE sites on the Chunk 2 core, one customer VPN (vrf CUST, RD/RT 65000:1).
+- Configs: pe1/pe2 gained vrf CUST + VPNv4 iBGP + PE-CE eBGP; 4 new CE configs; p1 unchanged
+- Automation: chunk3-setup.sh — creates VRF + enslaves, polls OSPF→Full, re-applies LDP/VPN live, self-verifies
+- **Verified:** VPNv4 PfxRcd 2, two-label stack live (label 16/80), ping ce-branch1→ce-dc 0% loss ttl=62, p1 zero customer routes
+- Gotchas fixed: RFC8212 ebgp-requires-policy default; VRF-absent-at-boot; IP-flush-on-enslave; full LDP block; cold-boot OSPF race
+- Reproducible: clean destroy → deploy → setup passes hands-off
