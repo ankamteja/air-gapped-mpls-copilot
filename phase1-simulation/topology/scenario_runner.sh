@@ -177,7 +177,7 @@ case "$SCENARIO" in
         echo "╔══════════════════════════════════════════════════════════════╗"
         echo "║  ALL 4 SCENARIOS COMPLETE                                  ║"
         echo "║  Check dataset.csv for labeled training data               ║"
-        echo "║  Run: python3 train_models.py --data dataset.csv           ║"
+        echo "║  Run: python3 phase3-models/train_models.py                ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
         ;;
     *)

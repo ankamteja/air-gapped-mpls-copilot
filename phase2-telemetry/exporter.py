@@ -166,6 +166,9 @@ def collect_frr_metrics(node, container):
     return metrics
 
 class MetricsHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # suppress per-request stdout noise at 1 s scrape rate
+
     def do_GET(self):
         if self.path == '/metrics':
             self.send_response(200)

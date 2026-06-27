@@ -393,7 +393,8 @@ def generate_synthetic_dataset(output_path, num_samples=2000):
 
 def main():
     parser = argparse.ArgumentParser(description="Aether ML Training Pipeline")
-    parser.add_argument("--data", default="dataset.csv", help="Path to training CSV (default: dataset.csv)")
+    _default_data = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset.csv")
+    parser.add_argument("--data", default=_default_data, help="Path to training CSV (default: phase3-models/dataset.csv)")
     parser.add_argument("--epochs", type=int, default=50, help="Training epochs (default: 50)")
     parser.add_argument("--seq-len", type=int, default=30, help="Sequence length for LSTM (default: 30)")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size (default: 32)")

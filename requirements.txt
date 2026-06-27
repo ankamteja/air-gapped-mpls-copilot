@@ -1,7 +1,7 @@
 # =============================================================================
 # Project Aether — Python Dependencies
 # Install: pip install -r requirements.txt
-# For CUDA (RTX 4060): pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# For CUDA (RTX 4060): pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 # =============================================================================
 
 # Phase 2 — Telemetry (exporter.py uses stdlib only, but Prometheus client is optional)

@@ -122,6 +122,7 @@ class AnomalyContextPacket:
             "recommended_action": "NO_ACTION",
             "execution_mode": "RECOMMEND_ONLY"
         }
+        self.mitigation_commands = []
 
     def set_telemetry(self, nodes_data):
         self.telemetry_snapshot["nodes"] = nodes_data
@@ -179,4 +180,5 @@ class AnomalyContextPacket:
         acp.ml_analysis = data["ml_analysis"]
         acp.graph_analysis = data["graph_analysis"]
         acp.corroboration = data["corroboration"]
+        acp.mitigation_commands = data.get("mitigation_commands", [])
         return acp

@@ -99,7 +99,11 @@ class AetherCorroborator:
         acp.set_graph_results(bottlenecks, impacted_paths)
         
         # 4. Enforce Corroboration and Policy Gate
-        graph_detects_bottleneck = len(all_results["CLONE_BASELINE"]["bottlenecks"]) > 0 or max(all_results["CLONE_BASELINE"]["delays"].values()) > 50
+        baseline_delays = all_results["CLONE_BASELINE"]["delays"]
+        graph_detects_bottleneck = (
+            len(all_results["CLONE_BASELINE"]["bottlenecks"]) > 0
+            or (bool(baseline_delays) and max(baseline_delays.values()) > 50)
+        )
         
         engines_agree = ml_detected == graph_detects_bottleneck
         
