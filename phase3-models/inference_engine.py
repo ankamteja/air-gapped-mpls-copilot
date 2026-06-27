@@ -41,6 +41,14 @@ try:
 except ImportError:
     HAS_COLLECTOR = False
 
+# Digital Twin (optional — degrades gracefully if statsmodels not installed)
+try:
+    from digital_twin import DigitalTwin
+    from trend_forecaster import TrendForecaster
+    HAS_TWIN = True
+except ImportError:
+    HAS_TWIN = False
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SAVE_DIR = os.path.join(os.path.dirname(__file__), "saved")
 ACP_LOG_DIR = os.path.join(os.path.dirname(__file__), "acp_logs")
@@ -100,6 +108,10 @@ class AetherInferenceEngine:
         self.graph_engine = ClonalGraphEngine()
         self.sliding_window = deque(maxlen=60)  # Keep 60s of history
         self.acp_count = 0
+        # Digital Twin + trend forecasting (wired in post-load)
+        self.trend_forecaster = TrendForecaster() if HAS_TWIN else None
+        self.digital_twin = DigitalTwin(self.graph_engine, self.trend_forecaster) if HAS_TWIN else None
+        self._twin_channel_cols: dict = {}  # populated after columns are known
 
     def load_models(self):
         """Load all trained model checkpoints."""
@@ -117,7 +129,7 @@ class AetherInferenceEngine:
             ).to(DEVICE)
             self.autoencoder.load_state_dict(checkpoint["model_state"])
             self.autoencoder.eval()
-            print(f"    ✓ Autoencoder loaded (threshold: {self.ae_threshold:.6f})")
+            print(f"    ✓ Autoencoder loaded (threshold: {self.ema_threshold.threshold:.6f})")
         else:
             print(f"    ✗ Autoencoder not found at {ae_path}")
 
@@ -185,6 +197,15 @@ class AetherInferenceEngine:
 
         feature_vec = self.normalize_sample(feature_vec)
         self.sliding_window.append(feature_vec)
+
+        # Feed raw (un-normalized) values to trend forecaster for digital twin
+        if self.trend_forecaster:
+            raw_vec = np.zeros(len(self.columns), dtype=np.float32)
+            for i, col in enumerate(self.columns):
+                raw_vec[i] = flat_metrics.get(col, 0.0)
+            self.trend_forecaster.update_batch(
+                {col: float(raw_vec[i]) for i, col in enumerate(self.columns)}
+            )
 
     def run_inference(self):
         """
@@ -294,6 +315,18 @@ class AetherInferenceEngine:
                              f"{'below threshold' if confidence < policy['min_conf'] else 'or action requires operator approval'}.")
 
         acp.set_corroboration(engines_agree, rationale, recommended_action, execution_mode)
+
+        # 6. Digital Twin Divergence (observability — does not gate corroboration)
+        if self.digital_twin and self.trend_forecaster:
+            try:
+                forecasts = self.trend_forecaster.forecast_all()
+                if forecasts:
+                    latest_metrics = {col: float(list(self.sliding_window)[-1][i])
+                                      for i, col in enumerate(self.columns)}
+                    div_result = self.digital_twin.evaluate(latest_metrics, forecasts)
+                    acp.set_digital_twin_divergence(div_result.normalized_divergence)
+            except Exception:
+                pass  # twin never blocks inference
 
         return acp
 

@@ -21,7 +21,19 @@ phase3-models/acp_logs/
 
 # Generated datasets
 dataset.csv
+dataset_large.csv
+dataset_v2.csv
 *.dataset.csv
+
+# Private keys
+*.pem
+!*.pub.pem
+
+# LLM vector database (large, runtime-generated)
+phase4-llm/chroma_db/
+
+# IKB runtime data
+phase3-models/ikb/incidents.jsonl
 
 # Telemetry data
 prometheus-data/

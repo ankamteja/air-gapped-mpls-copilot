@@ -1,7 +1,7 @@
-# Chunk 5 — Fault Injection & Ground-Truth Labelling
+# Chunk 5 — Fault Injection, Ground-Truth Labelling & Continuous Dataset Collection
 
 **Goal:** Inject reproducible network impairments into the live lab using Linux `tc netem` and write timestamped fault labels to `faults_log.csv` so the ML training pipeline has accurate ground truth.  
-**Status:** ✅ Done — `fault_injector.py` supports 5 fault types with auto-recovery and CSV logging.
+**Status:** ✅ Done — `fault_injector.py` supports 5 fault types with auto-recovery and CSV logging. Enhanced in v4 with `continuous_fault_loop.sh` for hours-long parameterized dataset collection.
 
 ---
 
@@ -111,3 +111,71 @@ Fault labels written to `faults_log.csv` match exactly the `label` field in `pha
 | `corrupt` | 3 | Frame Corruption |
 | `rate` | 4 | Congestion / Saturation |
 | `flap` | 5 | Control-Plane Flap |
+
+---
+
+## `continuous_fault_loop.sh` — Expanded Multi-Pattern Fault Simulation
+
+Added in v4 (`phase1-simulation/topology/continuous_fault_loop.sh`), this script runs indefinitely and cycles through all six fault classes with 30+ parameter variants.
+
+### Fault Parameter Tables
+
+| Fault Type | Variants | Range |
+|---|---|---|
+| Latency spike | 8 | 20ms–400ms, with jitter; step and burst patterns |
+| Packet loss | 6 | 0.5%–30% (random, burst, correlated models) |
+| Frame corruption | 5 | 0.01%–2.0% corruption ratios |
+| Rate limiting | 6 | 256kbps–1Mbps with burst headroom |
+| Link flap (BGP) | 4 | 3s–20s reconvergence windows |
+
+### Special Fault Patterns
+
+**Gradual Latency Ramp** (`gradual_latency_ramp()`):
+Steps through 6 latency levels (20→50→100→200→300→400ms), each held ~12s.
+Designed to exercise the TTF Regressor's ability to detect early-stage degradation before SLA breach.
+
+**Cascade Core Fault** (`cascade_core_fault()`):
+Simultaneous injection: pe1 latency spike (200ms) + p1 packet loss (15%).
+Represents realistic multi-node failure scenario; duration 60s with staggered recovery.
+
+**BGP Flap Cascade** (`bgp_flap_cascade()`):
+5× rapid link flap cycles with 10s reconvergence windows.
+Tests control-plane fault class detection under oscillating BGP state.
+
+### Healthy Windows
+
+Between each fault, a 30–90s healthy window (random interval) teaches the autoencoder what "normal" looks like and prevents ML models from training exclusively on fault data.
+
+### Dataset Collection (v2)
+
+Run alongside `traffic_generator.sh` to produce a realistic mixed-traffic dataset:
+
+```bash
+# Terminal 1 — fault loop
+bash phase1-simulation/topology/continuous_fault_loop.sh &
+
+# Terminal 2 — traffic
+bash phase1-simulation/topology/traffic_generator.sh &
+
+# Terminal 3 — collector (4 hours)
+python3 phase3-models/data_collector.py --duration 14400 --output phase3-models/dataset_v2.csv
+```
+
+Expected output: ~7,200 rows covering thousands of fault transitions with 30+ fault variants.
+
+### Retraining on Dataset v2
+
+```bash
+cd phase3-models
+python3 train_models.py --data dataset_v2.csv --epochs 100 --hidden-dim 128 --seq-len 30
+```
+
+Dataset v1 vs v2 comparison:
+
+| Metric | v1 (dataset.csv) | v2 (dataset_v2.csv) |
+|---|---|---|
+| Rows | 721 | ~14,400 (4h) |
+| Fault variants per class | 1–2 | 4–8 |
+| Cascade faults | None | Yes |
+| Gradual ramp | None | Yes |
+| BGP flap patterns | Simple | 5× cascade reconvergence |

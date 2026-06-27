@@ -333,10 +333,16 @@ def train_regressor(X_all, y_all, seq_len, epochs, batch_size, lr):
             best_state = {k: v.clone() for k, v in model.state_dict().items()}
 
         if (epoch + 1) % 10 == 0 or epoch == 0:
-            # Compute approx RMSE using MSE for reporting
+            # Batched RMSE to avoid OOM on large datasets
+            sq_err_sum, n_total = 0.0, 0
             with torch.no_grad():
-                all_pred = model(tensor_X)
-                mse = nn.functional.mse_loss(all_pred, tensor_y).item()
+                for i in range(0, len(tensor_X), batch_size * 4):
+                    bx = tensor_X[i:i + batch_size * 4]
+                    by = tensor_y[i:i + batch_size * 4]
+                    preds = model(bx)
+                    sq_err_sum += nn.functional.mse_loss(preds, by, reduction="sum").item()
+                    n_total += by.size(0)
+            mse = sq_err_sum / max(n_total, 1)
             print(f"    Epoch {epoch+1}/{epochs} — Huber: {avg_loss:.4f} | RMSE: {mse**0.5:.2f}s | LR: {optimizer.param_groups[0]['lr']:.2e}")
 
     model.load_state_dict(best_state)

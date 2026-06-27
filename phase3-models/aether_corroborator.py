@@ -13,6 +13,15 @@ from acp_manager import AnomalyContextPacket
 from graph_model import ClonalGraphEngine
 from taxonomy import DISPLAY_TO_INFO, policy_for_action
 
+# Digital twin divergence is a PSF (Predictive Safety Factor) — it widens
+# the rationale string for operator visibility but never gates auto-execute.
+try:
+    from digital_twin import DigitalTwin
+    from trend_forecaster import TrendForecaster
+    HAS_TWIN = True
+except ImportError:
+    HAS_TWIN = False
+
 # The operator-configurable autonomy matrix lives in taxonomy.ACTION_POLICY so
 # the corroborator, the live inference engine and the ACP layer all share one
 # definition. Use policy_for_action(action_class) to read it.
@@ -54,7 +63,8 @@ class AetherCorroborator:
         else:
             return ["# No mitigation commands generated - Baseline state optimal."]
 
-    def corroborate(self, telemetry_updates, ml_fault_class, ml_confidence, ml_ttf):
+    def corroborate(self, telemetry_updates, ml_fault_class, ml_confidence, ml_ttf,
+                    digital_twin_divergence: float | None = None):
         """
         Executes Dual-Model Corroboration loop.
         Combines stochastic LSTM classifier output with deterministic NetworkX simulations.
@@ -135,6 +145,12 @@ class AetherCorroborator:
             else:
                 rationale = f"Models corroborate, but ML confidence ({ml_confidence:.2f}) is below the required autonomy threshold ({policy['min_conf']:.2f})."
                 
+        # Append digital twin PSF to rationale (observability — never blocks action)
+        if digital_twin_divergence is not None:
+            twin_flag = " ⚠ TWIN HIGH" if digital_twin_divergence > 0.3 else ""
+            rationale += (f" | Digital twin divergence: {digital_twin_divergence:.3f}{twin_flag}")
+            acp.set_digital_twin_divergence(digital_twin_divergence)
+
         # Generate the commands and append them to the corroboration packet
         mitigation_cmds = self.generate_mitigation_commands(winner_clone)
         acp.set_corroboration(engines_agree, rationale, recommended_action, execution_mode)
