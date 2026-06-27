@@ -28,10 +28,10 @@ produces realistic telemetry; it does NOT analyze it (that's Phase 2/3).
 - [x] **Chunk 1 — Minimal topology** (2 FRR routers, 1 link, ping works)
 - [x] **Chunk 2 — MPLS core** (2 PE + 1 P, OSPF reachability, LDP labels, verified LSP)
 - [x] **Chunk 3 — CE sites + VPN** (2 branch + 1 hub + 1 DC, L3VPN/VRF, PE-CE BGP)
-- [ ] **Chunk 4 — Traffic generation** (iperf3 → VoIP/bulk/web traffic profiles)
-- [ ] **Chunk 5 — Fault injection** (Python + tc netem, gradual degradation, labeled)
+- [x] **Chunk 4 — Traffic generation** (iperf3 → VoIP/bulk/web traffic profiles)
+- [x] **Chunk 5 — Fault injection** (Python + tc netem, gradual degradation, labeled)
 
-**Demoable Phase 1 = Chunks 1–3 working. Chunks 4–5 make it good.**
+**Demoable Phase 1 = Chunks 1–5 working. The core platform simulation, traffic, and fault engine are now fully built.**
 
 ## Progress
 
@@ -140,5 +140,28 @@ If [7] fails but [1]-[6] pass, it's almost always the cold-boot timing —
 just run ./chunk3-setup.sh once more on the same lab. If it still fails,
 flag it (don't change config) and we'll debug the kernel MPLS dataplane.
 
-ault; VRF-absent-at-boot; IP-flush-on-enslave; full LDP block; cold-boot OSPF race
-- Reproducible: clean destroy → deploy → setup passes hands-off
+### Chunk 4 — DONE (traffic_generator.sh)
+- Simulates realistic government & enterprise traffic profiles across the L3VPN topology.
+- Runs:
+  - **VoIP/VTC:** Continuous UDP stream (150kbps to 1.5Mbps) on port 5001.
+  - **Database Backup:** Bursty TCP transfers (5Mbps) every 30 seconds on port 5002.
+  - **Intranet HTTP Web Traffic:** Randomized curl loop query on port 8080.
+  - **Administrative Session Control:** Emulated SSH low-bandwidth TCP activity.
+- Usage:
+  ```bash
+  ./traffic_generator.sh
+  ```
+
+### Chunk 5 — DONE (fault_injector.py)
+- Python-based fault injection manager executing network emulation (`tc qdisc`) inside FRR containers.
+- Supported faults: `latency` (with optional jitter), packet `loss`, packet `corruption`, bandwidth `rate` limits, and link `flaps`.
+- Writes a timestamped log to `faults_log.csv` for downstream supervised ML dataset labeling.
+- Usage:
+  ```bash
+  # Inject 15% packet loss on pe1 eth1 for 60 seconds
+  python3 fault_injector.py --node pe1 --interface eth1 --fault loss --value 15% --duration 60
+  
+  # Inject 100ms delay with 10ms jitter on ce-branch1 eth1
+  python3 fault_injector.py --node ce-branch1 --interface eth1 --fault latency --value "100ms 10ms" --duration 120
+  ```
+

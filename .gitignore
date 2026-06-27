@@ -1,2 +1,31 @@
 clab-*/
 *.bak
+
+# Personal notes / drafts
+idea*.md
+*idea*.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ML model artifacts (trained checkpoints + normalization params)
+*.pt
+*.pth
+*.onnx
+*.gguf
+phase3-models/saved/
+phase3-models/acp_logs/
+
+# Generated datasets
+dataset.csv
+*.dataset.csv
+
+# Telemetry data
+prometheus-data/
+grafana-data/
+
+# Fault injection logs (generated at runtime)
+faults_log.csv
