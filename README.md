@@ -10,7 +10,7 @@ An autonomous, offline AI NOC Copilot that predicts network failures before SLA 
 ---
 
 ## Team
-- Charan Teja (Lead)
+- Charan Teja 
 - Yogeshwar
 - Aranya Roy
 - Pradyumna
