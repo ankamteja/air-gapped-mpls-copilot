@@ -59,6 +59,13 @@ produces realistic telemetry; it does NOT analyze it (that's Phase 2/3).
   traffic transits p1 via MPLS, not plain IP)
 - Reproducible end-to-end: clean destroy → deploy → setup script passes hands-off
 
+### Chunk 3 — DONE (branch charan/chunk3-l3vpn)
+4 CE sites on the Chunk 2 core, one customer VPN (vrf CUST, RD/RT 65000:1).
+- Configs: pe1/pe2 gained vrf CUST + VPNv4 iBGP + PE-CE eBGP; 4 new CE configs; p1 unchanged
+- Automation: chunk3-setup.sh — creates VRF + enslaves, polls OSPF→Full, re-applies LDP/VPN live, self-verifies
+- **Verified:** VPNv4 PfxRcd 2, two-label stack live (label 16/80), ping ce-branch1→ce-dc 0% loss ttl=62, p1 zero customer routes
+- Gotchas fixed: RFC8212 ebgp-requires-policy def
+
 **IP / addressing plan:**
 
 | Router | Role | eth1 | eth2 | Loopback |
@@ -97,10 +104,41 @@ After Chunk 2 merges, all 3 teammates reproduce the MPLS core before Chunk 3.
 
 Script self-verifies — ends with LDP OPERATIONAL + 0% packet loss if the machine is good.
 
-### Chunk 3 — DONE (branch charan/chunk3-l3vpn)
-4 CE sites on the Chunk 2 core, one customer VPN (vrf CUST, RD/RT 65000:1).
-- Configs: pe1/pe2 gained vrf CUST + VPNv4 iBGP + PE-CE eBGP; 4 new CE configs; p1 unchanged
-- Automation: chunk3-setup.sh — creates VRF + enslaves, polls OSPF→Full, re-applies LDP/VPN live, self-verifies
-- **Verified:** VPNv4 PfxRcd 2, two-label stack live (label 16/80), ping ce-branch1→ce-dc 0% loss ttl=62, p1 zero customer routes
-- Gotchas fixed: RFC8212 ebgp-requires-policy default; VRF-absent-at-boot; IP-flush-on-enslave; full LDP block; cold-boot OSPF race
+## Chunk 3 Reproduction — L3VPN (do this before Chunk 4)
+
+Pull the merged branch and run the clean cycle:
+
+    git pull origin master
+    cd phase1-simulation/topology
+    docker pull frrouting/frr:latest
+    sudo clab destroy -t chunk3.clab.yml 2>/dev/null   # in case an old lab is up
+    sudo clab deploy  -t chunk3.clab.yml
+    ./chunk3-setup.sh
+
+The script is hands-off and self-verifies. Watch for:
+  [4] "OSPF Full on both core links (after Nx2s)"   ← it polls, may take ~40-60s
+  [6] "LDP up + VPNv4 established (after Nx2s)"
+
+Your machine PASSES if the seven checks show:
+  [1] OSPF neighbors: 2x Full
+  [2] LDP: OPERATIONAL
+  [3] VPNv4 (3.3.3.3): Established, PfxRcd 2   (not Active/Idle)
+  [4] PE-CE eBGP: both neighbors, PfxRcd 1 each
+  [5] VRF CUST: 12.12.12.12/32 + 14.14.14.14/32 via 3.3.3.3, label X/80
+  [6] "OK: p1 has no customer routes"
+  [7] ping ce-branch1 -> ce-dc: 0% packet loss, ttl=62
+
+The money line is [5] "label X/80" — that's the two-label stack
+(outer LDP transport + inner VPN label). [7] at ttl=62 proves the
+packet transited the core (4 hops) and [6] proves p1 never saw a
+customer route. That combination = working MPLS L3VPN.
+
+Tear down when done:
+    sudo clab destroy -t chunk3.clab.yml
+
+If [7] fails but [1]-[6] pass, it's almost always the cold-boot timing —
+just run ./chunk3-setup.sh once more on the same lab. If it still fails,
+flag it (don't change config) and we'll debug the kernel MPLS dataplane.
+
+ault; VRF-absent-at-boot; IP-flush-on-enslave; full LDP block; cold-boot OSPF race
 - Reproducible: clean destroy → deploy → setup passes hands-off
