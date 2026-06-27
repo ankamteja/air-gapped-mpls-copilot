@@ -13,13 +13,13 @@ Conventional NOC tools are reactive — alerts fire only after service degradati
 
 ## Solution
 A fully self-hosted predictive fault analytics platform with:
-- Simulated SD-WAN/MPLS topology (GNS3/Containerlab)
+- Simulated SD-WAN/MPLS topology (Containerlab)
 - LSTM-based fault prediction before threshold breach
 - Quantized offline LLM (Mistral 7B) with RAG over local runbooks
 - Zero outbound network dependency
 
 ## Tech Stack
-- Network simulation: GNS3 / Containerlab
+- Network simulation: Containerlab
 - Telemetry: Telegraf + Prometheus
 - ML models: LSTM, Prophet, ensemble classifiers
 - Offline LLM: Mistral 7B (GGUF quantized via Ollama)
