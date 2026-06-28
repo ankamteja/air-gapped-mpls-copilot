@@ -218,154 +218,190 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{background:#0d1117;color:#cdd3de;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;font-size:13px;display:flex;flex-direction:column}
+body{background:#111217;color:#c4c9d4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;display:flex;flex-direction:column}
 /* ── Header ── */
-#app-header{background:#161b27;border-bottom:1px solid #30363d;padding:0 16px;display:flex;align-items:center;gap:14px;flex-shrink:0;height:48px;z-index:10}
-#hamburger{background:none;border:none;color:#58a6ff;font-size:20px;cursor:pointer;padding:4px 6px;border-radius:4px;line-height:1;flex-shrink:0}
-#hamburger:hover{background:#1c2230}
-#app-title{color:#e6edf3;font-size:14px;font-weight:600;letter-spacing:0;white-space:nowrap}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;white-space:nowrap;letter-spacing:0.2px}
-.badge-green{background:#1a3a2a;color:#3fb950}
-.badge-red{background:#3a1a1a;color:#f85149}
-.badge-yellow{background:#3a2e1a;color:#e3b341}
-.badge-blue{background:#1a2540;color:#58a6ff}
+#app-header{background:#181b1f;border-bottom:1px solid #2c3035;padding:0 18px;display:flex;align-items:center;gap:14px;flex-shrink:0;height:46px;z-index:10}
+#hamburger{background:none;border:none;color:#6d7989;font-size:18px;cursor:pointer;padding:4px 7px;border-radius:3px;line-height:1;flex-shrink:0}
+#hamburger:hover{background:#21262d;color:#c4c9d4}
+#app-title{color:#c4c9d4;font-size:13px;font-weight:600;white-space:nowrap;letter-spacing:0.2px}
+.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-green{background:#1c2e1c;color:#57a84a;border:1px solid #2a442a}
+.badge-red{background:#2e1c1c;color:#d05a52;border:1px solid #442a2a}
+.badge-yellow{background:#2e2a1c;color:#c9963e;border:1px solid #44381c}
+.badge-blue{background:#1c222e;color:#5189c8;border:1px solid #1c3052}
 #header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-#clock{color:#484f58;font-size:11px;font-family:'Consolas','Courier New',monospace}
+#clock{color:#4a5260;font-size:11px;font-family:'Consolas','Courier New',monospace}
+/* ── System metrics bar ── */
+#sysbar{background:#14171b;border-bottom:1px solid #22262b;padding:4px 18px;display:flex;align-items:center;gap:20px;flex-shrink:0;font-size:11px;font-family:'Consolas','Courier New',monospace}
+.sysbar-item{display:flex;align-items:center;gap:6px}
+.sysbar-label{color:#3d4552;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
+.sysbar-val{color:#7a8494;font-weight:600}
+.sysbar-val.hi{color:#c9963e}
+.sysbar-val.crit{color:#d05a52}
+.sysbar-val.ok{color:#57a84a}
+.sysbar-bar{width:44px;height:4px;background:#22262b;border-radius:2px;overflow:hidden}
+.sysbar-fill{height:100%;transition:width .5s ease}
+.sysbar-fill.ok{background:#3a7a35}
+.sysbar-fill.hi{background:#8a6a20}
+.sysbar-fill.crit{background:#8a3030}
+#sysbar-sep{flex:1}
 /* ── App body ── */
 #app-body{display:flex;flex:1;overflow:hidden}
 /* ── Sidebar ── */
-#sidebar{width:220px;min-width:220px;background:#0d1117;border-right:1px solid #30363d;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
+#sidebar{width:220px;min-width:220px;background:#111217;border-right:1px solid #2c3035;display:flex;flex-direction:column;transition:width .18s,min-width .18s;overflow:hidden;flex-shrink:0}
 #sidebar.collapsed{width:48px;min-width:48px}
-.sidebar-section{padding:14px 14px 4px;color:#545f75;font-size:10px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .1s}
+.sidebar-section{padding:16px 14px 4px;color:#3d4552;font-size:10px;text-transform:uppercase;letter-spacing:0.7px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .1s}
 #sidebar.collapsed .sidebar-section{opacity:0;height:0;padding:0}
-.nav-item{padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;color:#8b96a8;border-left:2px solid transparent;transition:color .1s,background .1s,border-color .1s;white-space:nowrap;user-select:none}
-.nav-item:hover{background:#161a22;color:#cdd3de}
-.nav-item.active{color:#5196e8;border-left-color:#5196e8;background:#161a22}
-.nav-icon{flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center;opacity:0.8}
+.nav-item{padding:9px 14px;cursor:pointer;display:flex;align-items:center;gap:11px;color:#6d7989;border-left:2px solid transparent;transition:color .1s,background .1s,border-color .1s;white-space:nowrap;user-select:none}
+.nav-item:hover{background:#181b1f;color:#c4c9d4}
+.nav-item.active{color:#5189c8;border-left-color:#4070a8;background:#181b1f}
+.nav-icon{flex-shrink:0;width:16px;height:16px;display:flex;align-items:center;justify-content:center;opacity:0.7}
 .nav-item.active .nav-icon{opacity:1}
 .nav-label{font-size:13px;overflow:hidden;opacity:1;transition:opacity .15s}
 #sidebar.collapsed .nav-label{opacity:0;width:0;overflow:hidden}
-/* sidebar footer */
-#sidebar-footer{margin-top:auto;padding:10px 14px;border-top:1px solid #21262d;font-size:11px;color:#484f58;white-space:nowrap;overflow:hidden}
+#sidebar-footer{margin-top:auto;padding:12px 14px;border-top:1px solid #22262b;font-size:11px;color:#3d4552;white-space:nowrap;overflow:hidden}
 #sidebar.collapsed #sidebar-footer{display:none}
 /* ── Main content ── */
 #main-content{flex:1;overflow:hidden;display:flex;flex-direction:column}
-.view{display:none;flex:1;overflow:hidden}
+.view{display:none;flex:1;overflow-y:auto;overflow-x:hidden;flex-direction:column}
 .view.active{display:flex}
-/* ── Layouts ── */
-.split-h{display:flex;flex-direction:row;gap:10px;padding:10px;flex:1;overflow:hidden}
-.split-v{display:flex;flex-direction:column;gap:10px;padding:10px;flex:1;overflow:hidden}
-.col-60{flex:0 0 60%;overflow:hidden;display:flex;flex-direction:column}
-.col-40{flex:0 0 40%;overflow:hidden;display:flex;flex-direction:column}
-/* ── Panels ── */
-.panel{background:#161b27;border:1px solid #30363d;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0}
-.panel-header{background:#1c2230;padding:9px 14px;border-bottom:1px solid #30363d;font-size:12px;font-weight:500;color:#8b949e;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
-.panel-body{flex:1;overflow-y:auto;padding:14px;min-height:0}
-.panel-body-nopad{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
-/* ── Alerts ── */
-.alert{border-left:3px solid;margin-bottom:10px;padding:12px 16px;border-radius:0 5px 5px 0;font-size:13px;cursor:pointer;transition:background .1s}
-.alert:hover{background:#1c2230}
-.alert-CRITICAL{border-color:#f85149;background:#1e1014}
-.alert-HIGH{border-color:#e3b341;background:#1e1a10}
-.alert-MEDIUM{border-color:#58a6ff;background:#10161e}
-.alert-LOW{border-color:#3fb950;background:#101e12}
-.alert-title{color:#e6edf3;font-weight:bold;margin-bottom:3px}
-.alert-meta{color:#8b949e;font-size:11px;font-family:'Consolas','Courier New',monospace}
-.alert-rationale{margin-top:4px;color:#6e7681;font-size:11px}
-.severity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
-.dot-CRITICAL{background:#f85149}
-.dot-HIGH{background:#e3b341}
-.dot-MEDIUM{background:#58a6ff}
-.dot-LOW{background:#3fb950}
+/* ── Full-page layout ── */
+.page-wrap{padding:28px 36px;width:100%;max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px;flex:1}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between}
+.page-title{font-size:16px;font-weight:600;color:#c4c9d4}
+.page-subtitle{color:#4a5566;font-size:12px;margin-top:4px}
+.page-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+/* ── Panels (Grafana-style, no colored backgrounds) ── */
+.card{background:#181b1f;border:1px solid #2c3035;border-radius:3px;overflow:hidden}
+.card-header{padding:10px 16px;border-bottom:1px solid #22262b;display:flex;justify-content:space-between;align-items:center}
+.card-title{font-size:11px;font-weight:600;color:#6d7989;text-transform:uppercase;letter-spacing:0.7px}
+.card-body{padding:16px}
+/* ── Topology panel ── */
+.topo-card{background:#181b1f;border:1px solid #2c3035;border-radius:3px;overflow:hidden}
+.topo-card-header{padding:10px 16px;border-bottom:1px solid #22262b;display:flex;justify-content:space-between;align-items:center}
+.topo-svg-wrap{position:relative;height:400px}
+svg.topo-svg{width:100%;height:100%}
+.topo-status-bar{padding:7px 16px;border-top:1px solid #22262b;font-size:11px;color:#4a5566;background:#14171b;font-family:'Consolas','Courier New',monospace}
+.topo-legend{position:absolute;bottom:8px;left:12px;font-size:10px;color:#4a5566;display:flex;gap:12px}
+.legend-item{display:flex;align-items:center;gap:5px}
+.legend-line{width:16px;height:2px;display:inline-block}
+/* ── Alert rows (no tinted backgrounds, just a left border) ── */
+.alert{border-left:3px solid;margin-bottom:1px;padding:12px 16px;cursor:pointer;transition:background .08s;background:#181b1f}
+.alert:hover{background:#1e2226}
+.alert-CRITICAL{border-left-color:#c0392b}
+.alert-HIGH{border-left-color:#b8860b}
+.alert-MEDIUM{border-left-color:#2e6da4}
+.alert-LOW{border-left-color:#2d7a3a}
+.alert-ttf{font-size:11px;color:#7a8494;margin-bottom:4px;font-family:'Consolas','Courier New',monospace}
+.alert-ttf strong{color:#c4c9d4}
+.alert-CRITICAL .alert-ttf strong{color:#e07070}
+.alert-HIGH .alert-ttf strong{color:#c9963e}
+.alert-title{color:#c4c9d4;font-weight:600;margin-bottom:4px;font-size:13px}
+.alert-meta{color:#6d7989;font-size:11px;font-family:'Consolas','Courier New',monospace;margin-bottom:3px}
+.alert-rationale{color:#4a5566;font-size:11px;line-height:1.55}
+.severity-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;flex-shrink:0}
+.dot-CRITICAL{background:#c0392b}
+.dot-HIGH{background:#b8860b}
+.dot-MEDIUM{background:#2e6da4}
+.dot-LOW{background:#2d7a3a}
+/* ── Stat rows (sidebar footer) ── */
+.stat-row{display:flex;justify-content:space-between;margin-bottom:6px;padding:4px 0;border-bottom:1px solid #22262b}
+.stat-label{color:#6d7989;font-size:11px}
+.stat-val{color:#c4c9d4;font-weight:600;font-size:11px}
+/* ── Pipeline explainer ── */
+.pipe-step{border:1px solid #2c3035;border-radius:3px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;background:#14171b}
+.pipe-num{font-size:10px;font-weight:700;color:#4a5566;font-family:'Consolas','Courier New',monospace;margin-bottom:2px}
+.pipe-title{font-size:12px;font-weight:600;color:#c4c9d4}
+.pipe-body{font-size:11px;color:#6d7989;line-height:1.55}
+.pipe-arrow{display:flex;align-items:center;justify-content:center;font-size:14px;color:#2c3035;padding:0;padding-top:30px}
+details.card>summary{padding:10px 16px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+details.card>summary::-webkit-details-marker{display:none}
+details.card[open]>summary{border-bottom:1px solid #22262b}
+/* ── Action explainer ── */
+.action-explain{border:1px solid #2c3035;border-radius:3px;padding:12px 14px;background:#14171b}
+.action-explain.ae-locked{opacity:.6;border-style:dashed}
+.ae-name{font-size:11px;font-weight:700;color:#5189c8;margin-bottom:6px;font-family:'Consolas','Courier New',monospace}
+.ae-body{font-size:11px;color:#6d7989;line-height:1.6}
 /* ── Topology SVG ── */
 .topo-wrap{flex:1;min-height:0;position:relative;overflow:hidden}
 svg.topo-svg{width:100%;height:100%}
-.node{fill:#1c2230;stroke:#58a6ff;stroke-width:1.5}
-.node-pe{fill:#1a2e4a;stroke:#58a6ff}
-.node-p{fill:#2e1a4a;stroke:#a371f7}
-.node-ce{fill:#1a2e1a;stroke:#3fb950}
-.link{stroke:#30363d;stroke-width:1.5}
-.link-degraded{stroke:#f85149;stroke-width:3;stroke-dasharray:6,3;animation:dash 1s linear infinite}
-@keyframes dash{to{stroke-dashoffset:-9}}
-.node-label{fill:#c9d1d9;font-size:10px;font-family:monospace;pointer-events:none}
-.topo-legend{position:absolute;bottom:6px;left:10px;font-size:10px;color:#484f58;display:flex;gap:12px}
-.legend-item{display:flex;align-items:center;gap:4px}
-.legend-line{width:18px;height:2px;display:inline-block}
-.legend-deg{background:#f85149}
-.legend-ok{background:#30363d}
+.node{fill:#1e2226;stroke:#3d5a7a;stroke-width:1.5}
+.node-pe{fill:#1c2430;stroke:#3d6090}
+.node-p{fill:#221c30;stroke:#6050a0}
+.node-ce{fill:#1c2a1c;stroke:#3a6a3a}
+.link{stroke:#2c3035;stroke-width:1.5}
+.link-degraded{stroke:#c0392b;stroke-width:2.5;stroke-dasharray:5,3;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-8}}
+.node-label{fill:#8a9aaa;font-size:10px;font-family:monospace;pointer-events:none}
+.legend-deg{background:#c0392b}
+.legend-ok{background:#2c3035}
 /* ── Time-travel ── */
-#tt-slider{width:100%;margin:6px 0;accent-color:#58a6ff;cursor:pointer}
-#tt-controls{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #21262d;flex-shrink:0}
-#tt-live-btn{background:#238636;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px}
-#tt-live-btn:hover{background:#2ea043}
-#tt-live-btn.dimmed{background:#21262d;color:#8b949e}
-#tt-time-label{color:#8b949e;font-size:11px;flex:1;text-align:center}
-#tt-event{font-size:12px;color:#c9d1d9}
-#tt-event .ev-fault{font-size:14px;font-weight:bold;color:#e6edf3;margin-bottom:6px}
-#tt-event .ev-meta{color:#8b949e;margin-bottom:6px;font-size:11px}
-#tt-event .ev-rationale{color:#6e7681;font-size:11px}
+#tt-slider{width:100%;accent-color:#4070a8;cursor:pointer}
+#tt-live-btn{background:#1c2e1c;color:#57a84a;border:1px solid #2a442a;padding:4px 10px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:11px}
+#tt-live-btn:hover{background:#223822}
+#tt-live-btn.dimmed{background:#1e2226;color:#4a5566;border-color:#2c3035}
+#tt-event{font-size:12px;color:#c4c9d4}
+#tt-event .ev-fault{font-size:13px;font-weight:600;color:#c4c9d4;margin-bottom:4px}
+#tt-event .ev-meta{color:#6d7989;margin-bottom:4px;font-size:11px}
+#tt-event .ev-rationale{color:#4a5566;font-size:11px}
 /* ── Autonomy Matrix ── */
 .matrix-table{width:100%;border-collapse:collapse;font-size:12px}
-.matrix-table th{background:#1c2230;color:#8b949e;padding:8px 12px;text-align:left;font-weight:normal;text-transform:uppercase;font-size:10px;letter-spacing:1px;border-bottom:1px solid #30363d}
-.matrix-table td{padding:10px 12px;border-bottom:1px solid #21262d;vertical-align:middle}
-.matrix-table tr:hover td{background:#1c2230}
-.matrix-action{color:#e6edf3;font-weight:bold}
-.matrix-desc{color:#6e7681;font-size:11px;margin-top:2px}
-.matrix-conf input[type=number]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:3px 6px;border-radius:4px;width:70px;font-family:inherit;font-size:12px}
+.matrix-table th{background:#14171b;color:#6d7989;padding:9px 14px;text-align:left;font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:0.7px;border-bottom:1px solid #2c3035}
+.matrix-table td{padding:11px 14px;border-bottom:1px solid #22262b;vertical-align:middle}
+.matrix-table tr:hover td{background:#1e2226}
+.matrix-action{color:#c4c9d4;font-weight:600;font-size:13px;font-family:'Consolas','Courier New',monospace}
+.matrix-desc{color:#4a5566;font-size:11px;margin-top:3px}
+.matrix-conf input[type=number]{background:#111217;border:1px solid #2c3035;color:#c4c9d4;padding:4px 7px;border-radius:3px;width:68px;font-family:inherit;font-size:12px}
 .toggle-wrap{display:flex;align-items:center;gap:8px}
-.toggle{position:relative;width:40px;height:20px;cursor:pointer}
+.toggle{position:relative;width:38px;height:20px;cursor:pointer}
 .toggle input{opacity:0;width:0;height:0}
-.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#21262d;border-radius:10px;transition:.2s}
-.toggle-slider:before{position:absolute;content:'';height:14px;width:14px;left:3px;bottom:3px;background:#8b949e;border-radius:50%;transition:.2s}
-.toggle input:checked + .toggle-slider{background:#238636}
-.toggle input:checked + .toggle-slider:before{transform:translateX(20px);background:white}
-.toggle-locked{opacity:0.35;cursor:not-allowed}
-.matrix-save-btn{background:#238636;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
-.matrix-save-btn:hover{background:#2ea043}
-.matrix-save-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed}
-.matrix-save-status{font-size:11px;color:#3fb950;margin-left:8px}
+.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#22262b;border-radius:10px;transition:.15s}
+.toggle-slider:before{position:absolute;content:'';height:14px;width:14px;left:3px;bottom:3px;background:#6d7989;border-radius:50%;transition:.15s}
+.toggle input:checked + .toggle-slider{background:#2a5a2a}
+.toggle input:checked + .toggle-slider:before{transform:translateX(18px);background:#57a84a}
+.toggle-locked{opacity:.35;cursor:not-allowed}
+.matrix-save-btn{background:#1c2e1c;color:#57a84a;border:1px solid #2a442a;padding:5px 14px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
+.matrix-save-btn:hover{background:#223822}
+.matrix-save-btn:disabled{background:#1e2226;color:#4a5566;border-color:#2c3035;cursor:not-allowed}
+.matrix-save-status{font-size:11px;color:#57a84a;margin-left:8px}
 .matrix-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.matrix-header-row h3{color:#e6edf3;font-size:14px}
-.safety-notice{background:#1c2230;border:1px solid #30363d;border-radius:4px;padding:8px 12px;font-size:11px;color:#8b949e;margin-bottom:14px}
-.safety-notice span{color:#e3b341}
-/* ── NLQ ── */
-#nlq-input{width:calc(100% - 70px);background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:13px}
-#nlq-btn{background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500}
-#nlq-btn:hover{background:#2ea043}
-#nlq-output{padding:12px;background:#0d1117;border-radius:4px;margin-top:8px;min-height:80px;white-space:pre-wrap;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:1.65}
-.quick-btn{background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit}
-.quick-btn:hover{background:#21262d}
-/* ── Stat rows ── */
-.stat-row{display:flex;justify-content:space-between;margin-bottom:6px;padding:4px 0;border-bottom:1px solid #21262d}
-.stat-label{color:#8b949e}
-.stat-val{color:#e6edf3;font-weight:bold}
-/* ── Incident Modal (slide-in from right) ── */
-#incident-modal{display:none;position:fixed;right:0;top:48px;bottom:0;width:460px;background:#0d1117;border-left:2px solid #30363d;z-index:60;flex-direction:column;overflow:hidden;box-shadow:-8px 0 32px rgba(0,0,0,.7)}
+.matrix-header-row h3{color:#c4c9d4;font-size:13px}
+.safety-notice{border:1px solid #2c3035;border-left:2px solid #b8860b;padding:10px 14px;font-size:11px;color:#6d7989;margin-bottom:14px;background:#1a1a14}
+/* ── NLQ / Ask ── */
+#nlq-input{background:#111217;border:1px solid #2c3035;color:#c4c9d4;padding:7px 10px;border-radius:3px;font-family:'Consolas','Courier New',monospace;font-size:13px;flex:1}
+#nlq-input:focus{outline:1px solid #4070a8}
+#nlq-btn{background:#1c2e1c;color:#57a84a;border:1px solid #2a442a;padding:7px 16px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;white-space:nowrap}
+#nlq-btn:hover{background:#223822}
+#nlq-output{padding:14px;background:#111217;border:1px solid #22262b;border-radius:3px;min-height:100px;white-space:pre-wrap;color:#c4c9d4;font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:1.75}
+.quick-btn{background:#1e2226;color:#5189c8;border:1px solid #2c3035;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;font-family:inherit}
+.quick-btn:hover{background:#232830}
+/* ── Incident Modal ── */
+#incident-modal{display:none;position:fixed;right:0;top:46px;bottom:0;width:500px;background:#111217;border-left:1px solid #2c3035;z-index:60;flex-direction:column;overflow:hidden;box-shadow:-6px 0 24px rgba(0,0,0,.6)}
 #incident-modal.open{display:flex}
-#modal-header{padding:14px 18px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#161b27;gap:10px}
-#modal-title{color:#e6edf3;font-size:14px;font-weight:bold;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.modal-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;flex-shrink:0}
-.modal-close:hover{color:#e6edf3;background:#21262d}
+#modal-header{padding:14px 18px;border-bottom:1px solid #2c3035;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#181b1f;gap:10px}
+#modal-title{color:#c4c9d4;font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-close{background:none;border:none;color:#6d7989;font-size:18px;cursor:pointer;padding:2px 7px;border-radius:3px;line-height:1;flex-shrink:0}
+.modal-close:hover{color:#c4c9d4;background:#22262b}
 #modal-body{flex:1;overflow-y:auto;padding:18px}
-#modal-footer{padding:12px 18px;border-top:1px solid #30363d;display:flex;gap:8px;flex-shrink:0;background:#0d1117}
-.q-section{margin-bottom:14px;padding:12px 14px;background:#161b27;border-radius:6px;border-left:3px solid #30363d}
-.q-section .q-label{font-size:11px;font-weight:600;color:#6b788e;margin-bottom:6px}
-.q-section .q-text{color:#c9d1d9;line-height:1.65;font-size:12px;white-space:pre-wrap}
-.pending-action-box{background:#1c2118;border:1px solid #2d3a1a;border-left:3px solid #e3b341;border-radius:5px;padding:12px 14px;margin-bottom:16px}
-.approve-btn{flex:1;background:#238636;color:white;border:none;padding:10px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:bold}
-.approve-btn:hover{background:#2ea043}
-.approve-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed}
-.reject-btn{background:#3a0f0f;color:#f85149;border:1px solid #f85149;padding:10px 18px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:13px}
-.reject-btn:hover{background:#4a1a1a}
-/* ── Proactive action notification banner ── */
-#action-notif{display:none;padding:10px 18px;background:#1e1a10;border-bottom:2px solid #e3b341;flex-shrink:0;align-items:center;gap:12px}
+#modal-footer{padding:12px 18px;border-top:1px solid #2c3035;display:flex;gap:8px;flex-shrink:0;background:#111217}
+.q-section{margin-bottom:14px;padding:12px 14px;background:#181b1f;border-radius:3px;border-left:2px solid #2c3035}
+.q-section .q-label{font-size:10px;font-weight:600;color:#4a5566;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.q-section .q-text{color:#c4c9d4;line-height:1.65;font-size:12px;white-space:pre-wrap}
+.pending-action-box{border:1px solid #2c3035;border-left:2px solid #b8860b;padding:10px 12px;margin-bottom:12px;background:#1a1a14}
+.approve-btn{flex:1;background:#1c2e1c;color:#57a84a;border:1px solid #2a442a;padding:8px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600}
+.approve-btn:hover{background:#223822}
+.approve-btn:disabled{background:#1e2226;color:#4a5566;border-color:#2c3035;cursor:not-allowed}
+.reject-btn{background:#2e1c1c;color:#d05a52;border:1px solid #442a2a;padding:8px 16px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:12px}
+.reject-btn:hover{background:#381c1c}
+/* ── Proactive action banner ── */
+#action-notif{display:none;padding:8px 16px;background:#1a1a14;border-bottom:1px solid #b8860b;flex-shrink:0;align-items:center;gap:10px}
 #action-notif.visible{display:flex}
-.notif-label{color:#e3b341;font-size:12px;font-weight:bold;white-space:nowrap}
-.notif-text{color:#c9d1d9;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.notif-btn{background:#238636;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;white-space:nowrap}
-.notif-btn:hover{background:#2ea043}
-.notif-dismiss{background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1}
-.notif-dismiss:hover{color:#e6edf3}
+.notif-label{color:#c9963e;font-size:11px;font-weight:600;white-space:nowrap}
+.notif-text{color:#c4c9d4;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notif-btn{background:#1c2e1c;color:#57a84a;border:1px solid #2a442a;padding:4px 10px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:11px;white-space:nowrap}
+.notif-btn:hover{background:#223822}
+.notif-dismiss{background:none;border:none;color:#4a5566;cursor:pointer;font-size:14px;padding:2px 5px;line-height:1}
+.notif-dismiss:hover{color:#c4c9d4}
 </style>
 </head>
 <body>
@@ -373,12 +409,49 @@ svg.topo-svg{width:100%;height:100%}
 <!-- ── Header ─────────────────────────────────────────────────────────── -->
 <div id="app-header">
   <button id="hamburger" onclick="toggleSidebar()" title="Toggle menu">&#9776;</button>
-  <span id="app-title">Aether <span style="color:#545f75;font-weight:400;font-size:12px">NOC Dashboard</span></span>
+  <span id="app-title">Aether <span style="color:#3d4552;font-weight:400;font-size:11px">/ NOC Dashboard</span></span>
   <span class="badge badge-green" id="status-badge">Online</span>
   <span class="badge" id="compliance-badge">CHECKING&hellip;</span>
   <div id="header-right">
     <span class="badge badge-blue" id="alert-count-badge">0 alerts</span>
     <span id="clock"></span>
+  </div>
+</div>
+
+<!-- ── System metrics bar ─────────────────────────────────────────── -->
+<div id="sysbar">
+  <div class="sysbar-item">
+    <span class="sysbar-label">CPU</span>
+    <div class="sysbar-bar"><div class="sysbar-fill ok" id="sb-cpu-bar" style="width:0%"></div></div>
+    <span class="sysbar-val ok" id="sb-cpu-val">—</span>
+  </div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">RAM</span>
+    <div class="sysbar-bar"><div class="sysbar-fill ok" id="sb-ram-bar" style="width:0%"></div></div>
+    <span class="sysbar-val ok" id="sb-ram-val">—</span>
+  </div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">GPU</span>
+    <div class="sysbar-bar"><div class="sysbar-fill ok" id="sb-gpu-bar" style="width:0%"></div></div>
+    <span class="sysbar-val ok" id="sb-gpu-val">—</span>
+  </div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">VRAM</span>
+    <div class="sysbar-bar"><div class="sysbar-fill ok" id="sb-vram-bar" style="width:0%"></div></div>
+    <span class="sysbar-val ok" id="sb-vram-val">—</span>
+  </div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">GPU TEMP</span>
+    <span class="sysbar-val ok" id="sb-gputemp-val">—</span>
+  </div>
+  <div id="sysbar-sep"></div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">LLM</span>
+    <span class="sysbar-val" id="sb-llm-inline">—</span>
+  </div>
+  <div class="sysbar-item">
+    <span class="sysbar-label">ACPs</span>
+    <span class="sysbar-val ok" id="sb-acps-val">—</span>
   </div>
 </div>
 
@@ -412,6 +485,10 @@ svg.topo-svg{width:100%;height:100%}
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="6" x2="14" y2="6"/><line x1="2" y1="11" x2="14" y2="11"/><circle cx="6" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="11" cy="11" r="2" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">Policy Matrix</span>
     </div>
+    <div class="nav-item" data-nav="logs" onclick="showPanel('logs')">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="1"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="8" y2="12"/></svg></span>
+      <span class="nav-label">Remediation Log</span>
+    </div>
 
     <div id="sidebar-footer">
       <div class="stat-row" style="border:0;margin:0;padding:2px 0">
@@ -444,105 +521,164 @@ svg.topo-svg{width:100%;height:100%}
     </div>
 
     <!-- ── VIEW: Live Network ─────────────────────────────────────── -->
-    <div class="view active split-h" id="view-network">
-      <div class="col-60">
-        <div class="panel" style="height:100%">
-          <div class="panel-header">
-            Live Topology
-            <span id="topo-live-dot" style="color:#3fb950;font-size:14px">&#9679;</span>
-          </div>
-          <div class="panel-body-nopad">
-            <div class="topo-wrap">
-              <svg id="topo-canvas" class="topo-svg" viewBox="0 0 460 280" preserveAspectRatio="xMidYMid meet"></svg>
-              <div class="topo-legend">
-                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
-                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
+    <div class="view active" id="view-network">
+      <div class="page-wrap">
+        <div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Live Network
+                <span id="topo-live-dot" style="color:#3fb950;font-size:16px;margin-left:8px">&#9679;</span>
               </div>
-            </div>
-            <div id="topo-status-bar" style="padding:6px 10px;border-top:1px solid #21262d;font-size:11px;color:#484f58;flex-shrink:0">
-              Monitoring live &mdash; waiting for fault events&hellip;
+              <div class="page-subtitle">7-node MPLS L3VPN topology — real-time fault monitoring</div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="col-40">
-        <div class="panel" style="height:100%">
-          <div class="panel-header">
-            Recent Alerts
+
+        <!-- Topology card -->
+        <div class="topo-card">
+          <div class="topo-card-header">
+            <span class="card-title">Topology</span>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span class="topo-legend" style="position:static;font-size:12px;color:#6b788e;display:flex;gap:16px">
+                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
+                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
+              </span>
+            </div>
+          </div>
+          <div class="topo-svg-wrap">
+            <svg id="topo-canvas" class="topo-svg" viewBox="0 0 560 340" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <div class="topo-status-bar" id="topo-status-bar">Monitoring live — waiting for fault events…</div>
+        </div>
+
+        <!-- How Aether works pipeline -->
+        <details class="card" style="overflow:visible">
+          <summary>
+            <span class="card-title" style="margin:0">Detection &amp; remediation pipeline</span>
+            <span style="color:#3d4552;font-size:11px;margin-left:auto">expand</span>
+          </summary>
+          <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:start">
+            <div class="pipe-step">
+              <div class="pipe-num">01 / TELEMETRY</div>
+              <div class="pipe-title">Scrape</div>
+              <div class="pipe-body">FRR metrics every 30s — interface counters, BGP session state, packet loss, RTT jitter, OSPF LSAs, MPLS label bindings.</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">
+              <div class="pipe-num">02 / MODEL</div>
+              <div class="pipe-title">BiLSTM + Attention</div>
+              <div class="pipe-body">Last 20 scrapes fed as a sequence. Outputs: fault class, confidence score (0–100%), Time-To-Failure in seconds.</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">
+              <div class="pipe-num">03 / GRAPH</div>
+              <div class="pipe-title">Clonal Search</div>
+              <div class="pipe-body">NetworkX runs 3 routing permutations (baseline, rerouted, QoS-throttled), picks lowest SLA violation score as the recommended action.</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">
+              <div class="pipe-num">04 / TWIN</div>
+              <div class="pipe-title">Digital Twin</div>
+              <div class="pipe-body">Simulated replica runs in parallel. High divergence between twin and live state corroborates the anomaly.</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step">
+              <div class="pipe-num">05 / POLICY</div>
+              <div class="pipe-title">Edge Policy Engine</div>
+              <div class="pipe-body">conf ≥ threshold + models agree → AUTO_EXECUTE (FRR commands issued). Otherwise → RECOMMEND_ONLY (Approve button shown).</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Recent alerts -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recent Alerts</span>
             <span id="mini-feed-count" class="badge badge-yellow">0</span>
           </div>
-          <div class="panel-body" id="mini-feed"></div>
+          <div class="card-body" id="mini-feed" style="max-height:480px;overflow-y:auto"></div>
         </div>
       </div>
     </div>
 
     <!-- ── VIEW: Alert Feed ──────────────────────────────────────── -->
-    <div class="view split-v" id="view-alerts">
-      <div class="panel" style="flex:1">
-        <div class="panel-header">
-          All Events
-          <span id="full-feed-count" class="badge badge-yellow">0</span>
+    <div class="view" id="view-alerts">
+      <div class="page-wrap">
+        <div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Alert Feed</div>
+              <div class="page-subtitle">All ACP events — click any alert to open incident report</div>
+            </div>
+            <div class="page-actions">
+              <span id="full-feed-count" class="badge badge-yellow">0 events</span>
+            </div>
+          </div>
         </div>
-        <div class="panel-body" id="full-feed"></div>
+        <div id="full-feed"></div>
       </div>
     </div>
 
     <!-- ── VIEW: NLQ Copilot ─────────────────────────────────────── -->
-    <div class="view split-v" id="view-copilot">
-      <div class="panel" style="flex:1">
-        <div class="panel-header">Ask Aether <span style="color:#545f75;font-weight:400;font-size:11px">— Mistral 7B offline</span></div>
-        <div class="panel-body">
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <input id="nlq-input" placeholder="e.g. What will fail next?  /  How do I fix BGP flap on pe1?" onkeydown="if(event.key==='Enter')nlqSend()">
-            <button id="nlq-btn" onclick="nlqSend()">Ask</button>
-          </div>
-          <div id="nlq-output">Type a question above or use a quick query below.</div>
-          <div style="margin-top:12px;border-top:1px solid #21262d;padding-top:10px">
-            <div style="color:#6b788e;font-size:11px;font-weight:600;margin-bottom:6px">Quick queries</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">
-              <button class="quick-btn" onclick="quickQ('What is likely to fail next and when?')">What fails next?</button>
-              <button class="quick-btn" onclick="quickQ('Why is risk elevated on the network?')">Why elevated?</button>
-              <button class="quick-btn" onclick="quickQ('How do I fix BGP neighbor flap on pe1?')">Fix BGP flap?</button>
-              <button class="quick-btn" onclick="quickQ('Show me mitigation steps for packet loss on the pe1-p1 link')">Fix packet loss?</button>
-              <button class="quick-btn" onclick="quickQ('What is the autonomy policy and what actions are auto-executed?')">Autonomy policy?</button>
-              <button class="quick-btn" onclick="quickQ('Show the most recent anomaly context packet and explain it')">Last ACP?</button>
+    <div class="view" id="view-copilot">
+      <div class="page-wrap" style="max-width:900px">
+        <div>
+          <div class="page-title">Ask Aether</div>
+          <div class="page-subtitle">Offline LLM copilot — Mistral 7B · ChromaDB RAG · zero cloud dependency</div>
+        </div>
+
+        <div class="card">
+          <div class="card-body">
+            <div style="display:flex;gap:10px;margin-bottom:14px">
+              <input id="nlq-input" placeholder="e.g. What will fail next?  /  How do I fix BGP flap on pe1?" onkeydown="if(event.key==='Enter')nlqSend()" style="flex:1">
+              <button id="nlq-btn" onclick="nlqSend()">Ask</button>
             </div>
+            <div id="nlq-output" style="min-height:120px">Type a question above or use a quick query below.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Quick queries</span></div>
+          <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
+            <button class="quick-btn" onclick="quickQ('What is likely to fail next and when?')">What fails next?</button>
+            <button class="quick-btn" onclick="quickQ('Why is risk elevated on the network?')">Why elevated?</button>
+            <button class="quick-btn" onclick="quickQ('How do I fix BGP neighbor flap on pe1?')">Fix BGP flap?</button>
+            <button class="quick-btn" onclick="quickQ('Show me mitigation steps for packet loss on the pe1-p1 link')">Fix packet loss?</button>
+            <button class="quick-btn" onclick="quickQ('What is the autonomy policy and what actions are auto-executed?')">Autonomy policy?</button>
+            <button class="quick-btn" onclick="quickQ('Show the most recent anomaly context packet and explain it')">Last ACP?</button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- ── VIEW: Time-Travel ─────────────────────────────────────── -->
-    <div class="view split-h" id="view-timetravel">
-      <div class="col-60">
-        <div class="panel" style="height:100%">
-          <div class="panel-header">
-            Topology Playback
-            <span id="tt-snapshot-count" style="font-size:11px;color:#8b949e">0 snapshots</span>
+    <div class="view" id="view-timetravel">
+      <div class="page-wrap">
+        <div>
+          <div class="page-title">Topology History</div>
+          <div class="page-subtitle">Scrub back through past fault states — each ACP is captured as a snapshot</div>
+        </div>
+
+        <div class="topo-card">
+          <div class="topo-card-header">
+            <span class="card-title">Playback</span>
+            <span id="tt-snapshot-count" style="font-size:13px;color:#8b949e">0 snapshots</span>
           </div>
-          <div class="panel-body-nopad">
-            <div class="topo-wrap">
-              <svg id="tt-canvas" class="topo-svg" viewBox="0 0 460 280" preserveAspectRatio="xMidYMid meet"></svg>
-              <div class="topo-legend">
-                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
-                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
-              </div>
-            </div>
-            <div id="tt-controls">
-              <button id="tt-live-btn" class="dimmed" onclick="resumeLive()">&#9654; Live</button>
-              <input type="range" id="tt-slider" min="0" max="0" value="0" style="flex:1" oninput="scrubHistory(+this.value)">
-              <span id="tt-time-label">No snapshots yet</span>
-            </div>
+          <div class="topo-svg-wrap">
+            <svg id="tt-canvas" class="topo-svg" viewBox="0 0 560 340" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <div id="tt-controls" style="padding:14px 22px;border-top:1px solid #21262d;display:flex;align-items:center;gap:12px;background:#111620">
+            <button id="tt-live-btn" class="dimmed" onclick="resumeLive()">&#9654; Live</button>
+            <input type="range" id="tt-slider" min="0" max="0" value="0" style="flex:1;accent-color:#58a6ff" oninput="scrubHistory(+this.value)">
+            <span id="tt-time-label" style="color:#8b949e;font-size:13px;min-width:160px;text-align:right">No snapshots yet</span>
           </div>
         </div>
-      </div>
-      <div class="col-40">
-        <div class="panel" style="height:100%">
-          <div class="panel-header">Event at Selected Time</div>
-          <div class="panel-body" id="tt-event">
-            <div style="color:#484f58;font-size:12px;margin-top:20px;text-align:center">
-              Drag the slider to replay historical topology states.<br><br>
-              Each fault event is captured as a snapshot.
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Event at selected time</span></div>
+          <div class="card-body" id="tt-event" style="min-height:120px">
+            <div style="color:#6b788e;font-size:14px;padding:20px 0;text-align:center">
+              Drag the slider above to replay historical topology states.
             </div>
           </div>
         </div>
@@ -550,27 +686,98 @@ svg.topo-svg{width:100%;height:100%}
     </div>
 
     <!-- ── VIEW: Autonomy Matrix ─────────────────────────────────── -->
-    <div class="view split-v" id="view-matrix">
-      <div class="panel" style="flex:1">
-        <div class="panel-header">
-          Autonomy Policy Matrix
-          <span style="font-size:11px;color:#8b949e">Controls what the Edge Policy Engine executes vs. recommends</span>
-        </div>
-        <div class="panel-body" id="matrix-panel">
-          <div class="matrix-header-row">
-            <h3>Operator Autonomy Configuration</h3>
+    <div class="view" id="view-matrix">
+      <div class="page-wrap" style="max-width:1100px">
+        <div>
+          <div class="page-header">
             <div>
+              <div class="page-title">Autonomy Policy Matrix</div>
+              <div class="page-subtitle">Control when Aether acts on its own vs. asks for your approval</div>
+            </div>
+            <div class="page-actions">
               <button class="matrix-save-btn" id="matrix-save-btn" onclick="saveMatrix()">Save Changes</button>
               <span class="matrix-save-status" id="matrix-save-status"></span>
             </div>
           </div>
-          <div class="safety-notice">
-            <span>&#9888; Safety floors enforced in code regardless of this table:</span>
-            model disagreement always downgrades to RECOMMEND_ONLY &bull;
-            all auto-executed actions are logged and reversible &bull;
-            locked rows require operator escalation.
+        </div>
+
+        <!-- Execution mode reference -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Execution modes</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr">
+            <div style="padding:16px;border-right:1px solid #22262b">
+              <div style="font-size:11px;font-weight:700;color:#57a84a;font-family:'Consolas','Courier New',monospace;margin-bottom:8px">AUTO_EXECUTE</div>
+              <div style="font-size:11px;color:#6d7989;line-height:1.65;margin-bottom:10px">
+                EPE issues FRR vtysh commands immediately — no operator click required.
+                Every auto-action is written to the audit log with full ACP context and is reversible.
+                Apply to routine, low-blast-radius actions where speed matters more than confirmation latency.
+              </div>
+              <div style="font-size:10px;color:#4a5566;border-top:1px solid #22262b;padding-top:8px;font-family:'Consolas','Courier New',monospace;line-height:1.7">
+                e.g. conf=91% &gt;= threshold=75% → REROUTE_BRANCH executes &lt;2s<br>
+                alert card shows: "Auto-fixed"
+              </div>
+            </div>
+            <div style="padding:16px">
+              <div style="font-size:11px;font-weight:700;color:#c9963e;font-family:'Consolas','Courier New',monospace;margin-bottom:8px">RECOMMEND_ONLY</div>
+              <div style="font-size:11px;color:#6d7989;line-height:1.65;margin-bottom:10px">
+                System surfaces a recommendation and waits. Approve/Reject buttons appear on the alert.
+                Triggered when confidence is below threshold, the two ML models disagree,
+                or the action class is locked (high blast radius).
+              </div>
+              <div style="font-size:10px;color:#4a5566;border-top:1px solid #22262b;padding-top:8px;font-family:'Consolas','Courier New',monospace;line-height:1.7">
+                e.g. conf=62% &lt; threshold=75% → "Recommended: REROUTE_BRANCH"<br>
+                operator clicks Approve to execute
+              </div>
+            </div>
           </div>
-          <div id="matrix-table-wrap">Loading policy&hellip;</div>
+        </div>
+
+        <!-- Confidence threshold + action glossary side by side -->
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;align-items:start">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Confidence threshold</span></div>
+            <div class="card-body" style="font-size:11px;color:#6d7989;line-height:1.65">
+              The BiLSTM classifier outputs a probability score (0–100%) per prediction.
+              The <strong style="color:#c4c9d4">min confidence</strong> per row is the floor below which
+              that action class falls back to RECOMMEND_ONLY regardless of the toggle.<br><br>
+              <span style="color:#4a5566">Higher = safer, more approvals.<br>Lower = more autonomous.</span><br><br>
+              Typical values: 75% for reroutes, 90%+ for core or isolation actions.
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Action reference</span></div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr>
+                <th style="padding:8px 14px;text-align:left;color:#4a5566;border-bottom:1px solid #22262b;font-weight:600;background:#14171b">Action</th>
+                <th style="padding:8px 14px;text-align:left;color:#4a5566;border-bottom:1px solid #22262b;font-weight:600;background:#14171b">What it does</th>
+                <th style="padding:8px 14px;text-align:left;color:#4a5566;border-bottom:1px solid #22262b;font-weight:600;background:#14171b">Locked?</th>
+              </tr></thead>
+              <tbody>
+                <tr><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#5189c8;font-family:monospace">REROUTE_BRANCH</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#6d7989">Shifts branch traffic to SD-WAN backup tunnel via OSPF cost manipulation. Preserves VoIP SLA.</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#4a5566">No</td></tr>
+                <tr><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#5189c8;font-family:monospace">QOS_SHAPE_QUEUE</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#6d7989">Rate-limits bulk DB backup from 4M to 1.15 Mbps, freeing headroom for interactive traffic. Session-safe.</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#4a5566">No</td></tr>
+                <tr><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#5189c8;font-family:monospace">CORE_PATH_FAILOVER</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#6d7989">Fails over P1 core path. Affects all customer VRFs simultaneously — high blast radius.</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#c9963e">Yes — human-only</td></tr>
+                <tr><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#5189c8;font-family:monospace">NODE_ISOLATION</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#6d7989">Admin-shuts all interfaces on a node. Removes it from the MPLS fabric entirely.</td><td style="padding:9px 14px;border-bottom:1px solid #22262b;color:#c9963e">Yes — human-only</td></tr>
+                <tr><td style="padding:9px 14px;color:#5189c8;font-family:monospace">NO_ACTION</td><td style="padding:9px 14px;color:#6d7989">Log and observe only. Used for LOW events, healthy confirmations, or no applicable remediation.</td><td style="padding:9px 14px;color:#4a5566">No</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Safety notice -->
+        <div class="safety-notice">
+          Safety floors enforced in code regardless of this table:
+          model disagreement always downgrades to <strong style="color:#c9963e">RECOMMEND_ONLY</strong> &bull;
+          all auto-executed actions are logged and reversible &bull;
+          locked rows cannot be auto-executed regardless of settings.
+        </div>
+
+        <!-- The actual policy table -->
+        <div class="card" id="matrix-panel">
+          <div class="card-header">
+            <span class="card-title">Policy Configuration</span>
+            <span style="color:#6b788e;font-size:12px">Changes take effect immediately — no restart needed</span>
+          </div>
+          <div id="matrix-table-wrap" class="card-body">Loading policy&hellip;</div>
         </div>
       </div>
     </div>
@@ -592,6 +799,35 @@ svg.topo-svg{width:100%;height:100%}
     </div>
   </div>
 
+    <!-- ── VIEW: Remediation Log ─────────────────────────────────── -->
+    <div class="view" id="view-logs">
+      <div class="page-wrap">
+        <div>
+          <div class="page-header">
+            <div>
+              <div class="page-title">Remediation Log</div>
+              <div class="page-subtitle">Every action Aether took — auto-executed and operator-approved — with real command output</div>
+            </div>
+            <div class="page-actions">
+              <button onclick="loadActionLog()" class="matrix-save-btn">Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="border-left:2px solid #4a5566">
+          <div class="card-body" style="font-size:11px;color:#4a5566;line-height:1.65;padding:12px 16px">
+            Commands are run with <code style="color:#5189c8">docker exec clab-aether-*</code>.
+            If Containerlab is not running, commands will fail with "No such container" — that failure is the real outcome and is logged here.
+            REJECTED entries mean the operator clicked Reject — no commands were attempted.
+          </div>
+        </div>
+
+        <div id="action-log-table">
+          <div style="color:#4a5566;font-size:12px;padding:20px 0">Loading action log&hellip;</div>
+        </div>
+      </div>
+    </div>
+
 </div><!-- #app-body -->
 
 <script>
@@ -608,6 +844,7 @@ function showPanel(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector('[data-nav="' + name + '"]').classList.add('active');
   if (name === 'matrix') loadMatrix();
+  if (name === 'logs') loadActionLog();
   if (name === 'timetravel') refreshTTCanvas();
 }
 
@@ -624,16 +861,16 @@ setInterval(updateClock, 1000); updateClock();
 // Topology
 // ─────────────────────────────────────────────────────────────────────────────
 const NODES = {
-  'pe1':       {x:160, y:130, cls:'node-pe', label:'PE1'},
-  'p1':        {x:230, y:80,  cls:'node-p',  label:'P1'},
-  'pe2':       {x:300, y:130, cls:'node-pe', label:'PE2'},
-  'ce-branch1':{x:80,  y:210, cls:'node-ce', label:'Branch1'},
-  'ce-hub':    {x:155, y:220, cls:'node-ce', label:'Hub'},
-  'ce-branch2':{x:310, y:210, cls:'node-ce', label:'Branch2'},
-  'ce-dc':     {x:385, y:220, cls:'node-ce', label:'DC'},
+  'pe1':       {x:190, y:155, cls:'node-pe', label:'PE1'},
+  'p1':        {x:280, y:90,  cls:'node-p',  label:'P1'},
+  'pe2':       {x:370, y:155, cls:'node-pe', label:'PE2'},
+  'ce-branch1':{x:95,  y:255, cls:'node-ce', label:'Branch1'},
+  'ce-hub':    {x:190, y:270, cls:'node-ce', label:'Hub'},
+  'ce-branch2':{x:370, y:255, cls:'node-ce', label:'Branch2'},
+  'ce-dc':     {x:465, y:270, cls:'node-ce', label:'DC'},
 };
 const LINKS = [
-  ['pe1','p1'], ['p1','pe2'], ['pe1','pe2'],
+  ['pe1','p1'], ['p1','pe2'],
   ['pe1','ce-branch1'], ['pe1','ce-hub'],
   ['pe2','ce-branch2'], ['pe2','ce-dc'],
 ];
@@ -762,6 +999,51 @@ async function pollLiveMetrics() {
 }
 pollLiveMetrics();
 setInterval(pollLiveMetrics, 15000);
+
+// ── System metrics bar ─────────────────────────────────────────────────────
+function _sysbarClass(pct) {
+  if (pct === null || pct === undefined) return 'ok';
+  if (pct >= 85) return 'crit';
+  if (pct >= 60) return 'hi';
+  return 'ok';
+}
+function _sysbarUpdate(barId, valId, pct, label) {
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  if (!bar || !val) return;
+  const cls = _sysbarClass(pct);
+  bar.style.width = (pct ?? 0) + '%';
+  bar.className = 'sysbar-fill ' + cls;
+  val.textContent = label;
+  val.className = 'sysbar-val ' + cls;
+}
+async function pollSysMetrics() {
+  try {
+    const r = await fetch('/api/system-metrics');
+    const d = await r.json();
+    _sysbarUpdate('sb-cpu-bar','sb-cpu-val', d.cpu_pct,
+      d.cpu_pct != null ? d.cpu_pct.toFixed(1)+'%' : '—');
+    _sysbarUpdate('sb-ram-bar','sb-ram-val', d.ram_pct,
+      d.ram_used_gb != null ? d.ram_used_gb.toFixed(1)+'/'+ d.ram_total_gb.toFixed(0)+'GB' : '—');
+    // Show current GPU util + 60s peak (GPU idles at 0% between ~50ms inference bursts)
+    const gpuLabel = d.gpu_pct != null
+      ? d.gpu_pct.toFixed(0)+'% (peak '+( d.gpu_peak_pct||0).toFixed(0)+'%)'
+      : 'N/A';
+    _sysbarUpdate('sb-gpu-bar','sb-gpu-val', d.gpu_peak_pct ?? d.gpu_pct, gpuLabel);
+    const vramPct = d.vram_total_mb ? (d.vram_used_mb / d.vram_total_mb * 100) : null;
+    _sysbarUpdate('sb-vram-bar','sb-vram-val', vramPct,
+      d.vram_used_mb != null
+        ? (d.vram_used_mb/1024).toFixed(1)+'/'+(d.vram_total_mb/1024).toFixed(0)+'GB'
+        : 'N/A');
+    const tempEl = document.getElementById('sb-gputemp-val');
+    if (tempEl) {
+      tempEl.textContent = d.gpu_temp_c != null ? d.gpu_temp_c.toFixed(0)+'°C' : 'N/A';
+      tempEl.className = 'sysbar-val ' + (d.gpu_temp_c > 80 ? 'crit' : d.gpu_temp_c > 65 ? 'hi' : 'ok');
+    }
+  } catch(e) {}
+}
+pollSysMetrics();
+setInterval(pollSysMetrics, 4000);
 
 function applyFaultToTopo(acp) {
   const newLinks = (acp.fault_class && acp.fault_class !== 'Healthy')
@@ -893,19 +1175,33 @@ function renderAlert(acp, prepend) {
   document.getElementById('full-feed-count').textContent = totalAlertCount;
 
   const conf = acp.confidence != null ? (acp.confidence * 100).toFixed(0) + '%' : '?';
-  const ttf  = acp.ttf != null && acp.ttf >= 0 ? acp.ttf.toFixed(0) + 's' : '?';
+  const ttfSec = acp.ttf != null && acp.ttf >= 0 ? acp.ttf : null;
+  const ttfLabel = ttfSec != null
+    ? (ttfSec < 60 ? ttfSec.toFixed(0) + 's' : (ttfSec / 60).toFixed(1) + 'min')
+    : null;
   const ts   = (acp.timestamp || '').slice(11, 19);
+  const modeLabel = acp.execution_mode === 'AUTO_EXECUTE'
+    ? 'AUTO_EXECUTE' : acp.execution_mode === 'RECOMMEND_ONLY'
+    ? 'RECOMMEND_ONLY' : (acp.execution_mode || '?');
+  const modeColor = acp.execution_mode === 'AUTO_EXECUTE' ? '#3fb950'
+    : acp.execution_mode === 'RECOMMEND_ONLY' ? '#e3b341' : '#8b949e';
 
   function makeDiv() {
     const div = document.createElement('div');
     div.className = 'alert alert-' + (acp.severity || 'MEDIUM');
     div.innerHTML = `
+      ${ttfLabel ? `<div class="alert-ttf">TTF <strong>${ttfLabel}</strong> before SLA breach</div>` : ''}
       <div class="alert-title">
         <span class="severity-dot dot-${acp.severity||'MEDIUM'}"></span>
         ${acp.fault_class || 'Unknown'} &mdash; ${acp.severity || '?'}
       </div>
-      <div class="alert-meta">conf=${conf} | ttf=${ttf} | ${acp.execution_mode||'?'} | ${ts} UTC</div>
-      <div class="alert-rationale">${(acp.rationale || '').slice(0, 120)}</div>`;
+      <div class="alert-meta">
+        <span style="color:#8b949e">conf</span> <strong style="color:#e6edf3">${conf}</strong>
+        &nbsp;·&nbsp;
+        <span style="color:${modeColor}">${modeLabel}</span>
+        &nbsp;·&nbsp; ${ts} UTC
+      </div>
+      <div class="alert-rationale">${(acp.rationale || '').slice(0, 140)}</div>`;
     div.onclick = () => openIncidentModal(acp);
     return div;
   }
@@ -987,6 +1283,10 @@ function connectWS() {
       if (!seenAcpIds.has(acp.acp_id)) {
         seenAcpIds.add(acp.acp_id);
         renderAlert(acp, true);
+        // Fire real commands for AUTO_EXECUTE mode — no human click needed
+        if (acp.execution_mode === 'AUTO_EXECUTE' && acp.action && acp.action !== 'NO_ACTION') {
+          autoExecuteAcp(acp);
+        }
       }
     } catch(err) {}
   };
@@ -1147,42 +1447,153 @@ function closeModal() {
 async function approveCurrentAcp() {
   if (!currentModalAcp) return;
   const btn = document.getElementById('modal-approve-btn');
-  btn.disabled = true; btn.textContent = 'Logging…';
+  btn.disabled = true;
+  btn.textContent = 'Executing…';
+
+  // Fetch the remediation steps first so we can send real commands
+  let steps = [];
   try {
-    await fetch('/api/feedback', {
+    const r = await fetch('/api/explain/' + encodeURIComponent(currentModalAcp.acp_id));
+    const d = await r.json();
+    if (d.remediation && d.remediation.steps) steps = d.remediation.steps;
+  } catch(e) {}
+
+  try {
+    const r = await fetch('/api/execute-action', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({acp_id: currentModalAcp.acp_id, feedback: 'accepted'}),
+      body: JSON.stringify({
+        acp_id:      currentModalAcp.acp_id,
+        action:      currentModalAcp.action || 'NO_ACTION',
+        fault_class: currentModalAcp.fault_class || 'Unknown',
+        severity:    currentModalAcp.severity || 'MEDIUM',
+        steps:       steps,
+        executed_by: 'OPERATOR',
+      }),
     });
-    btn.textContent = '✓ Logged — run commands below';
-    btn.style.background = '#0f3a1a';
-    // Highlight the remediation section and scroll to it
-    const rem = document.getElementById('remediation-section');
-    if (rem) {
-      rem.style.outline = '1px solid #2ea043';
-      rem.style.borderRadius = '4px';
-      rem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    const result = await r.json();
+    const ok = result.overall === 'SUCCESS';
+    const partial = result.overall === 'PARTIAL';
+    btn.textContent = ok ? '✓ Executed' : partial ? '⚠ Partial' : '✗ Commands failed (logged)';
+    btn.style.background = ok ? '#1c2e1c' : '#2e2218';
+    btn.style.color = ok ? '#57a84a' : '#c9963e';
+
+    // Show real output in the modal
+    const el = document.getElementById('modal-explain-body');
+    if (el && result.steps) {
+      const rows = result.steps.map(s => {
+        const icon = s.skipped ? '—' : s.success ? '✓' : '✗';
+        const color = s.skipped ? '#4a5566' : s.success ? '#57a84a' : '#d05a52';
+        const out = (s.stdout || '') + (s.stderr ? '\n' + s.stderr : '');
+        return `<div style="margin-bottom:12px;border-left:2px solid ${color};padding-left:10px">
+          <div style="font-size:10px;color:${color};margin-bottom:4px">${icon} ${s.description || s.command}</div>
+          <code style="display:block;font-size:10px;color:#6d7989;background:#111217;padding:6px 8px;border-radius:2px;white-space:pre-wrap;word-break:break-all">${s.command}</code>
+          ${out ? `<code style="display:block;font-size:10px;color:#c4c9d4;background:#14171b;padding:6px 8px;margin-top:4px;border-radius:2px;white-space:pre-wrap">${out}</code>` : ''}
+        </div>`;
+      }).join('');
+      el.innerHTML = `<div style="font-size:11px;font-weight:600;color:#4a5566;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Execution result — ${result.overall}</div>` + rows;
     }
-    // Do NOT auto-close — operator must see the commands and execute them manually
   } catch(e) {
-    btn.textContent = '✓ Execute: ' + (currentModalAcp.action || '?');
-    btn.disabled = false;
+    btn.textContent = 'Error'; btn.disabled = false;
   }
 }
 
 async function rejectCurrentAcp() {
   if (!currentModalAcp) return;
   const btn = document.getElementById('modal-reject-btn');
-  btn.disabled = true; btn.textContent = 'Rejecting…';
+  btn.disabled = true; btn.textContent = 'Logging rejection…';
   try {
-    await fetch('/api/feedback', {
+    await fetch('/api/reject-action', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({acp_id: currentModalAcp.acp_id, feedback: 'rejected'}),
+      body: JSON.stringify({
+        acp_id:   currentModalAcp.acp_id,
+        feedback: currentModalAcp.action || 'NO_ACTION',
+      }),
     });
     closeModal();
   } catch(e) {
     btn.disabled = false; btn.textContent = '✗ Reject';
+  }
+}
+
+// Auto-execute when the system delivers an AUTO_EXECUTE ACP
+async function autoExecuteAcp(acp) {
+  let steps = [];
+  try {
+    const r = await fetch('/api/explain/' + encodeURIComponent(acp.acp_id));
+    const d = await r.json();
+    if (d.remediation && d.remediation.steps) steps = d.remediation.steps;
+  } catch(e) {}
+
+  try {
+    await fetch('/api/execute-action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        acp_id:      acp.acp_id,
+        action:      acp.action || 'NO_ACTION',
+        fault_class: acp.fault_class || 'Unknown',
+        severity:    acp.severity || 'MEDIUM',
+        steps:       steps,
+        executed_by: 'AUTO',
+      }),
+    });
+  } catch(e) { console.error('[Aether] autoExecute failed:', e); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remediation Log view
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadActionLog() {
+  const el = document.getElementById('action-log-table');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/action-log?limit=100');
+    const d = await r.json();
+    if (!d.entries || d.entries.length === 0) {
+      el.innerHTML = `<div style="color:#4a5566;font-size:12px;padding:24px 0;text-align:center">
+        No actions logged yet. Actions appear here when AUTO_EXECUTE fires or you click Approve on an alert.
+      </div>`;
+      return;
+    }
+    el.innerHTML = d.entries.map(e => {
+      const ts = (e.timestamp||'').replace('T',' ').slice(0,19);
+      const overallColor = {SUCCESS:'#57a84a', PARTIAL:'#c9963e', FAILED:'#d05a52', REJECTED:'#4a5566'}[e.overall] || '#4a5566';
+      const modeColor = e.executed_by === 'AUTO' ? '#5189c8' : '#c9963e';
+      const stepRows = (e.steps||[]).map(s => {
+        if (s.skipped) return '';
+        const icon = s.success ? '✓' : '✗';
+        const c = s.success ? '#57a84a' : '#d05a52';
+        const out = ((s.stdout||'') + (s.stderr ? '\n' + s.stderr : '')).trim().slice(0,500);
+        return `<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #22262b;color:${c};font-family:monospace;font-size:10px;width:14px">${icon}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #22262b;font-size:10px;color:#6d7989">${s.description||''}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #22262b">
+            <code style="font-size:10px;color:#5189c8;font-family:monospace">${s.command||''}</code>
+            ${out ? `<pre style="font-size:9px;color:#4a5566;margin-top:4px;white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden">${out}</pre>` : ''}
+          </td>
+        </tr>`;
+      }).join('');
+
+      return `<div class="card" style="margin-bottom:10px">
+        <div class="card-header" style="padding:10px 14px">
+          <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+            <span style="font-size:10px;font-weight:700;color:${overallColor};font-family:monospace;flex-shrink:0">${e.overall}</span>
+            <span style="font-size:11px;font-weight:600;color:#c4c9d4;font-family:monospace">${e.action||'?'}</span>
+            <span style="font-size:10px;color:#4a5566;font-family:monospace">${e.fault_class||''}</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;font-size:10px">
+            <span style="color:${modeColor};font-family:monospace">${e.executed_by}</span>
+            <span style="color:#3d4552;font-family:monospace">${ts}</span>
+            <span style="color:#3d4552;font-family:monospace">${(e.acp_id||'').slice(0,8)}</span>
+          </div>
+        </div>
+        ${stepRows ? `<table style="width:100%;border-collapse:collapse">${stepRows}</table>` : ''}
+      </div>`;
+    }).join('');
+  } catch(err) {
+    el.innerHTML = `<div style="color:#d05a52;font-size:12px;padding:20px 0">Failed to load log: ${err}</div>`;
   }
 }
 
@@ -1343,6 +1754,14 @@ async function pollStatus() {
     document.getElementById('sb-models').textContent = s.models_loaded ? '✓ loaded' : '✗ missing';
     document.getElementById('sb-llm').textContent    = s.llm_online   ? '✓ online' : '⚠ offline';
     document.getElementById('sb-ikb').textContent    = s.ikb_docs > 0 ? s.ikb_docs + ' docs' : '✗ empty';
+    // Sysbar inline LLM + ACP count
+    const llmEl = document.getElementById('sb-llm-inline');
+    if (llmEl) {
+      llmEl.textContent = s.llm_online ? '● Online' : '○ Offline';
+      llmEl.className = 'sysbar-val ' + (s.llm_online ? 'ok' : 'hi');
+    }
+    const acpEl = document.getElementById('sb-acps-val');
+    if (acpEl) acpEl.textContent = (s.acp_count ?? '—').toLocaleString();
     const cb = document.getElementById('compliance-badge');
     if (s.air_gap_compliant === true) {
       cb.textContent = '✓ AIR-GAPPED'; cb.className = 'badge badge-green';
@@ -1552,6 +1971,48 @@ async def explain_acp(acp_id: str):
     return result
 
 
+_gpu_peak_window: list[float] = []  # rolling 60-second peak tracker (15 samples × 4s)
+_GPU_PEAK_MAX = 15
+
+@app.get("/api/system-metrics")
+async def system_metrics():
+    """Returns CPU, RAM, GPU, and VRAM usage for the system metrics bar."""
+    import subprocess as _sp
+    result: dict = {}
+    try:
+        import psutil
+        result["cpu_pct"]      = round(psutil.cpu_percent(interval=0.3), 1)
+        vm = psutil.virtual_memory()
+        result["ram_pct"]      = round(vm.percent, 1)
+        result["ram_used_gb"]  = round(vm.used / 1e9, 1)
+        result["ram_total_gb"] = round(vm.total / 1e9, 1)
+    except ImportError:
+        result["cpu_pct"] = result["ram_pct"] = result["ram_used_gb"] = result["ram_total_gb"] = None
+
+    # GPU via nvidia-smi (RTX 4060)
+    try:
+        out = _sp.check_output(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+             "--format=csv,noheader,nounits"],
+            timeout=3, text=True
+        ).strip().split(",")
+        gpu_now = float(out[0].strip())
+        result["gpu_pct"]       = gpu_now
+        result["vram_used_mb"]  = float(out[1].strip())
+        result["vram_total_mb"] = float(out[2].strip())
+        result["gpu_temp_c"]    = float(out[3].strip())
+        # Rolling 60-second peak (inference bursts are ~50ms so instant reads show 0%)
+        _gpu_peak_window.append(gpu_now)
+        if len(_gpu_peak_window) > _GPU_PEAK_MAX:
+            _gpu_peak_window.pop(0)
+        result["gpu_peak_pct"] = max(_gpu_peak_window)
+    except Exception:
+        result["gpu_pct"] = result["vram_used_mb"] = result["vram_total_mb"] = result["gpu_temp_c"] = None
+        result["gpu_peak_pct"] = None
+
+    return result
+
+
 @app.get("/api/metrics/live")
 async def live_metrics():
     """Simulated real-time link utilization for topology overlays. Updates via random walk."""
@@ -1580,6 +2041,65 @@ async def feedback(req: FeedbackRequest):
     if not ok:
         raise HTTPException(status_code=404, detail="ACP not found")
     return {"status": "ok", "acp_id": req.acp_id, "feedback": req.feedback}
+
+
+class ExecuteActionRequest(BaseModel):
+    acp_id: str
+    action: str
+    fault_class: str = "Unknown"
+    severity: str = "MEDIUM"
+    steps: list[dict] = []
+    executed_by: str = "OPERATOR"  # "AUTO" or "OPERATOR"
+
+
+@app.post("/api/execute-action")
+async def execute_action(req: ExecuteActionRequest):
+    """
+    Actually runs the remediation commands and writes the result to action_log.jsonl.
+    Returns the full execution record including real stdout/stderr from each command.
+    """
+    sys.path.insert(0, os.path.join(REPO_ROOT, "..", "phase3-models"))
+    from action_log import execute_and_log
+    from feedback_cli import _apply_feedback
+
+    # Mark as accepted in IKB
+    _apply_feedback(req.acp_id, "accepted")
+
+    # Execute for real and log
+    entry = execute_and_log(
+        acp_id=req.acp_id,
+        action=req.action,
+        steps=req.steps,
+        executed_by=req.executed_by,
+        fault_class=req.fault_class,
+        severity=req.severity,
+    )
+    return entry
+
+
+@app.post("/api/reject-action")
+async def reject_action(req: FeedbackRequest):
+    """Logs a rejection without running any commands."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "..", "phase3-models"))
+    from action_log import log_rejected
+    from feedback_cli import _apply_feedback
+
+    _apply_feedback(req.acp_id, "rejected")
+    entry = log_rejected(
+        acp_id=req.acp_id,
+        action=req.feedback,  # reuse field for action name
+        fault_class="",
+        severity="",
+    )
+    return {"status": "rejected", "logged": True}
+
+
+@app.get("/api/action-log")
+async def action_log_endpoint(limit: int = 100):
+    """Returns the real remediation execution log — every AUTO and operator-approved action."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "..", "phase3-models"))
+    from action_log import read_log
+    return {"entries": read_log(limit=limit)}
 
 
 @app.get("/api/compliance")
