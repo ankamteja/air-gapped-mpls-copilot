@@ -178,7 +178,7 @@ class AetherCopilot:
                 context         = context[:2000],
             )
             raw = _ollama_generate(prompt, system=SYSTEM_PROMPT)
-            if raw.startswith("[LLM unavailable") and ("404" in raw or "not found" in raw.lower()):
+            if raw.startswith("[LLM unavailable"):
                 use_llm = False
             else:
                 q1, q2, q3 = _parse_q_answers(raw)
@@ -241,7 +241,12 @@ class AetherCopilot:
             return ("No relevant runbook context found. "
                     f"Run `ollama pull {OLLAMA_MODEL}` for full LLM answers.")
         # Build a structured answer from top RAG hits
-        lines = [f"**[RAG answer — Mistral loading, will upgrade automatically]**\n"]
+        header = (
+            "**[RAG runbook excerpts — Mistral is not responding; full LLM answers resume when Ollama is back]**"
+            if self._available else
+            "**[Offline runbook answer — Ollama is not running]**"
+        )
+        lines = [header + "\n"]
         lines.append(f"**Question:** {question}\n")
         for i, r in enumerate(results[:3], 1):
             preview = r["text"][:400].strip()

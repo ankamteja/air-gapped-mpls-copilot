@@ -59,6 +59,7 @@ app = FastAPI(title="Project Aether NOC Copilot", version="5.0.0")
 _graph_engine = ClonalGraphEngine()
 _copilot = None
 _connected_ws: list[WebSocket] = []
+_llm_lock = asyncio.Lock()  # serialize LLM calls — prevents concurrent Ollama contention
 
 
 def _get_copilot():
@@ -92,7 +93,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:13px;display:flex;flex-direction:column}
+body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:14px;display:flex;flex-direction:column}
 /* ── Header ── */
 #app-header{background:#161b27;border-bottom:1px solid #30363d;padding:0 16px;display:flex;align-items:center;gap:14px;flex-shrink:0;height:48px;z-index:10}
 #hamburger{background:none;border:none;color:#58a6ff;font-size:20px;cursor:pointer;padding:4px 6px;border-radius:4px;line-height:1;flex-shrink:0}
@@ -133,10 +134,10 @@ body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monos
 /* ── Panels ── */
 .panel{background:#161b27;border:1px solid #30363d;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0}
 .panel-header{background:#1c2230;padding:8px 14px;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
-.panel-body{flex:1;overflow-y:auto;padding:10px;min-height:0}
+.panel-body{flex:1;overflow-y:auto;padding:14px;min-height:0}
 .panel-body-nopad{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 /* ── Alerts ── */
-.alert{border-left:3px solid;margin-bottom:8px;padding:8px 10px;border-radius:0 4px 4px 0;font-size:12px;cursor:pointer;transition:background .1s}
+.alert{border-left:3px solid;margin-bottom:10px;padding:12px 16px;border-radius:0 5px 5px 0;font-size:13px;cursor:pointer;transition:background .1s}
 .alert:hover{background:#1c2230}
 .alert-CRITICAL{border-color:#f85149;background:#1e1014}
 .alert-HIGH{border-color:#e3b341;background:#1e1a10}
@@ -212,6 +213,33 @@ svg.topo-svg{width:100%;height:100%}
 .stat-row{display:flex;justify-content:space-between;margin-bottom:6px;padding:4px 0;border-bottom:1px solid #21262d}
 .stat-label{color:#8b949e}
 .stat-val{color:#e6edf3;font-weight:bold}
+/* ── Incident Modal (slide-in from right) ── */
+#incident-modal{display:none;position:fixed;right:0;top:48px;bottom:0;width:460px;background:#0d1117;border-left:2px solid #30363d;z-index:60;flex-direction:column;overflow:hidden;box-shadow:-8px 0 32px rgba(0,0,0,.7)}
+#incident-modal.open{display:flex}
+#modal-header{padding:14px 18px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#161b27;gap:10px}
+#modal-title{color:#e6edf3;font-size:14px;font-weight:bold;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1;flex-shrink:0}
+.modal-close:hover{color:#e6edf3;background:#21262d}
+#modal-body{flex:1;overflow-y:auto;padding:18px}
+#modal-footer{padding:12px 18px;border-top:1px solid #30363d;display:flex;gap:8px;flex-shrink:0;background:#0d1117}
+.q-section{margin-bottom:14px;padding:12px 14px;background:#161b27;border-radius:6px;border-left:3px solid #30363d}
+.q-section .q-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8b949e;margin-bottom:6px}
+.q-section .q-text{color:#c9d1d9;line-height:1.65;font-size:12px;white-space:pre-wrap}
+.pending-action-box{background:#1c2118;border:1px solid #2d3a1a;border-left:3px solid #e3b341;border-radius:5px;padding:12px 14px;margin-bottom:16px}
+.approve-btn{flex:1;background:#238636;color:white;border:none;padding:10px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:bold}
+.approve-btn:hover{background:#2ea043}
+.approve-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed}
+.reject-btn{background:#3a0f0f;color:#f85149;border:1px solid #f85149;padding:10px 18px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:13px}
+.reject-btn:hover{background:#4a1a1a}
+/* ── Proactive action notification banner ── */
+#action-notif{display:none;padding:10px 18px;background:#1e1a10;border-bottom:2px solid #e3b341;flex-shrink:0;align-items:center;gap:12px}
+#action-notif.visible{display:flex}
+.notif-label{color:#e3b341;font-size:12px;font-weight:bold;white-space:nowrap}
+.notif-text{color:#c9d1d9;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notif-btn{background:#238636;color:white;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;white-space:nowrap}
+.notif-btn:hover{background:#2ea043}
+.notif-dismiss{background:none;border:none;color:#8b949e;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1}
+.notif-dismiss:hover{color:#e6edf3}
 </style>
 </head>
 <body>
@@ -277,6 +305,17 @@ svg.topo-svg{width:100%;height:100%}
 
   <!-- Main content -->
   <div id="main-content">
+
+    <!-- ── Proactive action notification banner ────────────────── -->
+    <div id="action-notif">
+      <span class="notif-label">⚡ Action Required</span>
+      <span class="notif-text">
+        <span id="notif-action-name" style="font-weight:bold"></span> &mdash;
+        <span id="notif-fault"></span>
+      </span>
+      <button class="notif-btn" onclick="openNotifModal()">Review &amp; Approve</button>
+      <button class="notif-dismiss" onclick="dismissNotif()" title="Dismiss">✕</button>
+    </div>
 
     <!-- ── VIEW: Live Network ─────────────────────────────────────── -->
     <div class="view active split-h" id="view-network">
@@ -411,6 +450,22 @@ svg.topo-svg{width:100%;height:100%}
     </div>
 
   </div><!-- #main-content -->
+
+  <!-- ── Incident Modal ─────────────────────────────────────────── -->
+  <div id="incident-modal">
+    <div id="modal-header">
+      <span id="modal-title">Incident Report</span>
+      <button class="modal-close" onclick="closeModal()" title="Close">✕</button>
+    </div>
+    <div id="modal-body">
+      <div style="color:#484f58;padding:30px 0;text-align:center">Click an alert to load the incident report.</div>
+    </div>
+    <div id="modal-footer" style="display:none">
+      <button class="approve-btn" id="modal-approve-btn" onclick="approveCurrentAcp()">✓ Execute Action</button>
+      <button class="reject-btn" id="modal-reject-btn" onclick="rejectCurrentAcp()">✗ Reject</button>
+    </div>
+  </div>
+
 </div><!-- #app-body -->
 
 <script>
@@ -678,7 +733,7 @@ function renderAlert(acp, prepend) {
       </div>
       <div class="alert-meta">conf=${conf} | ttf=${ttf} | ${acp.execution_mode||'?'} | ${ts} UTC</div>
       <div class="alert-rationale">${(acp.rationale || '').slice(0, 120)}</div>`;
-    div.onclick = () => { showPanel('copilot'); loadExplanation(acp.acp_id); };
+    div.onclick = () => openIncidentModal(acp);
     return div;
   }
 
@@ -697,6 +752,11 @@ function renderAlert(acp, prepend) {
   // Update live topology and snapshot history
   applyFaultToTopo(acp);
   addTopoSnapshot(acp);
+
+  // Proactive prompt for RECOMMEND_ONLY actions on live alerts
+  if (prepend && acp.execution_mode === 'RECOMMEND_ONLY' && acp.action && acp.action !== 'NO_ACTION') {
+    showActionNotif(acp);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -771,7 +831,7 @@ async function nlqSend() {
   const q = document.getElementById('nlq-input').value.trim();
   if (!q) return;
   const out = document.getElementById('nlq-output');
-  out.textContent = '&#8987; Thinking…';
+  out.textContent = '⏳ Thinking…';
   try {
     const r = await fetch('/api/nlq', {
       method: 'POST',
@@ -788,35 +848,174 @@ function quickQ(q) {
   nlqSend();
 }
 
-async function loadExplanation(acp_id) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Incident Modal
+// ─────────────────────────────────────────────────────────────────────────────
+let currentModalAcp = null;
+
+function openIncidentModal(acp) {
+  currentModalAcp = acp;
+  const modal = document.getElementById('incident-modal');
+  modal.classList.add('open');
+
+  const action = acp.action || 'NO_ACTION';
+  const isRecommend = acp.execution_mode === 'RECOMMEND_ONLY' && action && action !== 'NO_ACTION';
+  const conf = acp.confidence != null ? (acp.confidence * 100).toFixed(0) + '%' : '?';
+  const ttf  = acp.ttf != null && acp.ttf >= 0 ? acp.ttf.toFixed(0) + 's' : '?';
+  const ts   = (acp.timestamp || '').replace('T', ' ').slice(0, 19);
+  const sevColor = {CRITICAL:'#f85149',HIGH:'#e3b341',MEDIUM:'#58a6ff',LOW:'#3fb950'}[acp.severity] || '#8b949e';
+  const sevBadge = acp.severity === 'CRITICAL' ? 'red' : acp.severity === 'HIGH' ? 'yellow' : 'blue';
+
+  document.getElementById('modal-title').textContent = (acp.fault_class || 'Incident') + ' — ' + (acp.severity || '?');
+
+  const footer = document.getElementById('modal-footer');
+  const approveBtn = document.getElementById('modal-approve-btn');
+  const rejectBtn  = document.getElementById('modal-reject-btn');
+  footer.style.display = isRecommend ? 'flex' : 'none';
+  approveBtn.textContent = '✓ Execute: ' + action;
+  approveBtn.disabled = false;
+  rejectBtn.disabled = false;
+  rejectBtn.textContent = '✗ Reject';
+
+  const pendingBox = isRecommend ? `
+    <div class="pending-action-box">
+      <div style="font-size:10px;color:#e3b341;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⚡ Awaiting Operator Approval</div>
+      <div style="color:#e6edf3;font-weight:bold;font-size:14px;margin-bottom:4px">${action}</div>
+      <div style="color:#8b949e;font-size:11px;line-height:1.5">${(acp.rationale || '').slice(0, 250)}</div>
+    </div>` : '';
+
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:16px;font-weight:bold;color:${sevColor};margin-bottom:8px">${acp.fault_class || 'Unknown'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <span class="badge badge-${sevBadge}">${acp.severity || '?'}</span>
+        <span class="badge badge-blue">conf ${conf}</span>
+        <span class="badge badge-yellow">TTF ${ttf}</span>
+        <span class="badge" style="background:#1c2230;color:#8b949e">${acp.execution_mode || '?'}</span>
+      </div>
+      <div style="font-size:11px;color:#484f58">${ts} UTC &bull; ${acp.acp_id || ''}</div>
+    </div>
+    ${pendingBox}
+    <div id="modal-explain-body">
+      <div style="color:#484f58;text-align:center;padding:24px 0">⏳ Fetching incident analysis…</div>
+    </div>`;
+
+  fetchExplanation(acp.acp_id);
+}
+
+async function fetchExplanation(acp_id) {
   if (!acp_id) return;
-  const out = document.getElementById('nlq-output');
-  out.textContent = '&#8987; Generating incident report…';
   try {
-    const r = await fetch('/api/nlq', {
+    const r = await fetch('/api/explain/' + encodeURIComponent(acp_id));
+    const d = await r.json();
+    const el = document.getElementById('modal-explain-body');
+    if (!el) return;
+    if (d.error) {
+      el.innerHTML = '<div style="color:#f85149;padding:10px">' + d.error + '</div>';
+      return;
+    }
+    const srcTag = d.source === 'ollama' ? '🤖 Mistral 7B' : '📋 Structured fallback';
+    el.innerHTML = `
+      <div class="q-section">
+        <div class="q-label">Q1 — What is likely to fail next?</div>
+        <div class="q-text">${d.q1_what_fails || '—'}</div>
+      </div>
+      <div class="q-section">
+        <div class="q-label">Q2 — Why is risk elevated?</div>
+        <div class="q-text">${d.q2_why_risk || '—'}</div>
+      </div>
+      <div class="q-section">
+        <div class="q-label">Q3 — Corrective action to take</div>
+        <div class="q-text">${d.q3_action || '—'}</div>
+      </div>
+      <div style="margin-top:12px;padding:8px 10px;background:#161b27;border-radius:4px;font-size:10px;color:#484f58">
+        ${srcTag} &bull; ${d.acp_id || acp_id}
+      </div>`;
+  } catch(e) {
+    const el = document.getElementById('modal-explain-body');
+    if (el) el.innerHTML = '<div style="color:#f85149;padding:10px">Error: ' + e + '</div>';
+  }
+}
+
+function closeModal() {
+  document.getElementById('incident-modal').classList.remove('open');
+  currentModalAcp = null;
+}
+
+async function approveCurrentAcp() {
+  if (!currentModalAcp) return;
+  const btn = document.getElementById('modal-approve-btn');
+  btn.disabled = true; btn.textContent = 'Executing…';
+  try {
+    const r = await fetch('/api/feedback', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: 'Explain ACP ' + acp_id + ' — what failed, why, and what to do?'}),
+      body: JSON.stringify({acp_id: currentModalAcp.acp_id, feedback: 'accepted'}),
     });
     const d = await r.json();
-    out.textContent = d.answer || d.error;
-  } catch(e) { out.textContent = 'Error: ' + e; }
+    btn.textContent = '✓ Approved — Action Queued';
+    btn.style.background = '#0f3a1a';
+    setTimeout(() => closeModal(), 2200);
+  } catch(e) {
+    btn.textContent = '✓ Execute: ' + (currentModalAcp.action || '?');
+    btn.disabled = false;
+  }
+}
+
+async function rejectCurrentAcp() {
+  if (!currentModalAcp) return;
+  const btn = document.getElementById('modal-reject-btn');
+  btn.disabled = true; btn.textContent = 'Rejecting…';
+  try {
+    await fetch('/api/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({acp_id: currentModalAcp.acp_id, feedback: 'rejected'}),
+    });
+    closeModal();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '✗ Reject';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Proactive action notification
+// ─────────────────────────────────────────────────────────────────────────────
+let pendingNotifAcp = null;
+
+function showActionNotif(acp) {
+  pendingNotifAcp = acp;
+  document.getElementById('notif-action-name').textContent = acp.action || '?';
+  document.getElementById('notif-fault').textContent =
+    (acp.fault_class || 'Fault') + ' — conf ' +
+    (acp.confidence != null ? (acp.confidence * 100).toFixed(0) + '%' : '?');
+  document.getElementById('action-notif').classList.add('visible');
+}
+
+function dismissNotif() {
+  document.getElementById('action-notif').classList.remove('visible');
+  pendingNotifAcp = null;
+}
+
+function openNotifModal() {
+  if (!pendingNotifAcp) return;
+  const acp = pendingNotifAcp;
+  dismissNotif();
+  openIncidentModal(acp);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Autonomy Matrix
 // ─────────────────────────────────────────────────────────────────────────────
 const LOCKED_ACTIONS = new Set(['CORE_PATH_FAILOVER', 'NODE_ISOLATION', 'NO_ACTION']);
-let matrixLoaded = false;
 let currentPolicy = {};
 
 async function loadMatrix() {
-  if (matrixLoaded) return;
   try {
+    document.getElementById('matrix-table-wrap').innerHTML = '<div style="color:#484f58;padding:8px">Loading policy…</div>';
     const r = await fetch('/api/policy');
     currentPolicy = await r.json();
     renderMatrix(currentPolicy);
-    matrixLoaded = true;
   } catch(e) {
     document.getElementById('matrix-table-wrap').innerHTML =
       '<div style="color:#f85149">Failed to load policy: ' + e + '</div>';
@@ -901,7 +1100,7 @@ async function saveRow(action) {
     });
     const d = await r.json();
     if (d.status === 'ok') {
-      btn.textContent = '&#10003; Saved';
+      btn.textContent = '✓ Saved';
       btn.style.background = '#0f3a1a';
       btn.style.color = '#3fb950';
       setTimeout(() => {
@@ -930,14 +1129,14 @@ async function pollStatus() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
-    document.getElementById('sb-models').textContent = s.models_loaded ? '&#10003; loaded' : '&#10007; missing';
-    document.getElementById('sb-llm').textContent    = s.llm_online   ? '&#10003; online' : '&#9888; offline';
-    document.getElementById('sb-ikb').textContent    = s.ikb_docs > 0 ? s.ikb_docs + ' docs' : '&#10007; empty';
+    document.getElementById('sb-models').textContent = s.models_loaded ? '✓ loaded' : '✗ missing';
+    document.getElementById('sb-llm').textContent    = s.llm_online   ? '✓ online' : '⚠ offline';
+    document.getElementById('sb-ikb').textContent    = s.ikb_docs > 0 ? s.ikb_docs + ' docs' : '✗ empty';
     const cb = document.getElementById('compliance-badge');
     if (s.air_gap_compliant === true) {
-      cb.textContent = '&#10003; AIR-GAPPED'; cb.className = 'badge badge-green';
+      cb.textContent = '✓ AIR-GAPPED'; cb.className = 'badge badge-green';
     } else if (s.air_gap_compliant === false) {
-      cb.textContent = '&#9888; NOT COMPLIANT'; cb.className = 'badge badge-red';
+      cb.textContent = '⚠ NOT COMPLIANT'; cb.className = 'badge badge-red';
     }
   } catch(e) {}
 }
@@ -1096,10 +1295,44 @@ async def nlq(req: NLQRequest):
     copilot = _get_copilot()
     if copilot is None:
         return {"answer": "LLM copilot unavailable. Check Ollama installation.", "source": "error"}
-    answer = await asyncio.get_event_loop().run_in_executor(
-        None, copilot.query, req.question
-    )
+    async with _llm_lock:
+        answer = await asyncio.get_event_loop().run_in_executor(
+            None, copilot.query, req.question
+        )
     return {"answer": answer, "source": "copilot"}
+
+
+@app.get("/api/explain/{acp_id}")
+async def explain_acp(acp_id: str):
+    """Load the full ACP JSON by ID and generate a structured Q1/Q2/Q3 incident report."""
+    import glob
+    import types
+    copilot = _get_copilot()
+    if copilot is None:
+        return {"error": "LLM copilot unavailable — start Ollama and try again", "acp_id": acp_id}
+
+    # Scan acp_logs/ for the file whose acp_id field matches (filenames include timestamps, not just the id)
+    acp_entry = None
+    if os.path.exists(ACP_DIR):
+        for path in sorted(glob.glob(os.path.join(ACP_DIR, "*.json")), reverse=True):
+            try:
+                with open(path) as f:
+                    entry = json.load(f)
+                if entry.get("acp_id") == acp_id:
+                    acp_entry = entry
+                    break
+            except Exception:
+                pass
+
+    if acp_entry is None:
+        return {"error": f"ACP {acp_id!r} not found in logs", "acp_id": acp_id}
+
+    acp_obj = types.SimpleNamespace(**acp_entry)
+    async with _llm_lock:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, copilot.explain, acp_obj
+        )
+    return result
 
 
 # ── Feedback ─────────────────────────────────────────────────────────────────
