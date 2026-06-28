@@ -161,7 +161,8 @@ class AetherCopilot:
         rag_results = query_all(query_text, top_k=3)
         context     = format_context(rag_results) if rag_results else "No runbook context available."
 
-        if self._available:
+        use_llm = self._available
+        if use_llm:
             prompt = ACP_EXPLAIN_TEMPLATE.format(
                 fault_class     = ml.get("predicted_fault_class", "Unknown"),
                 confidence      = ml.get("confidence_score", 0),
@@ -177,9 +178,12 @@ class AetherCopilot:
                 context         = context[:2000],
             )
             raw = _ollama_generate(prompt, system=SYSTEM_PROMPT)
-            q1, q2, q3 = _parse_q_answers(raw)
-            source = "ollama"
-        else:
+            if raw.startswith("[LLM unavailable") and ("404" in raw or "not found" in raw.lower()):
+                use_llm = False
+            else:
+                q1, q2, q3 = _parse_q_answers(raw)
+                source = "ollama"
+        if not use_llm:
             q1, q2, q3 = self._fallback_answers(acp, ttf_str, top_features)
             raw    = ""
             source = "structured_fallback"
@@ -202,7 +206,11 @@ class AetherCopilot:
         context = format_context(results) if results else "No relevant context found in the IKB."
         if self._available:
             prompt = NLQ_TEMPLATE.format(context=context[:2500], question=question)
-            return _ollama_generate(prompt, system=SYSTEM_PROMPT)
+            answer = _ollama_generate(prompt, system=SYSTEM_PROMPT)
+            # Fall back to RAG if model not yet downloaded / server error
+            if answer.startswith("[LLM unavailable"):
+                return self._nlq_fallback(question, results)
+            return answer
         else:
             return self._nlq_fallback(question, results)
 
@@ -230,12 +238,16 @@ class AetherCopilot:
 
     def _nlq_fallback(self, question: str, results: list) -> str:
         if not results:
-            return ("Ollama is offline and no relevant runbook context was found. "
-                    "Install Ollama and pull the Mistral model for full LLM responses.")
-        context_preview = results[0]["text"][:500] if results else ""
-        return (f"[Ollama offline — showing raw runbook match]\n\n{context_preview}\n\n"
-                f"Install Ollama for natural language answers: "
-                f"`curl -fsSL https://ollama.com/install.sh | sh && ollama pull {OLLAMA_MODEL}`")
+            return ("No relevant runbook context found. "
+                    f"Run `ollama pull {OLLAMA_MODEL}` for full LLM answers.")
+        # Build a structured answer from top RAG hits
+        lines = [f"**[RAG answer — Mistral loading, will upgrade automatically]**\n"]
+        lines.append(f"**Question:** {question}\n")
+        for i, r in enumerate(results[:3], 1):
+            preview = r["text"][:400].strip()
+            lines.append(f"**Runbook match {i}:**\n{preview}\n")
+        lines.append(f"\n_Full LLM answers available once `ollama pull {OLLAMA_MODEL}` completes._")
+        return "\n".join(lines)
 
 
 def _parse_q_answers(raw: str) -> tuple[str, str, str]:

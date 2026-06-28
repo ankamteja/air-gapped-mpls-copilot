@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # =============================================================================
-# app.py — Project Aether NOC Dashboard (FastAPI)
+# app.py — Project Aether NOC Dashboard (FastAPI)  v5.0
 #
 # Endpoints:
-#   GET  /                    HTML dashboard
+#   GET  /                    HTML dashboard (hamburger sidebar SPA)
 #   GET  /api/status          System health + model status
 #   GET  /api/topology        NetworkX graph as JSON (nodes + edges)
-#   GET  /api/acps            Recent ACPs from IKB log
+#   GET  /api/acps            Recent ACPs from acp_logs/
 #   POST /api/nlq             Natural language query → LLM answer
 #   POST /api/feedback        Operator accept/reject ACP feedback
 #   GET  /api/compliance      Air-gap compliance report
 #   GET  /api/benchmark       Lead-time benchmark results
+#   GET  /api/policy          Current autonomy policy matrix
+#   PUT  /api/policy          Update a row of the autonomy policy matrix
 #   WS   /ws/alerts           WebSocket: live ACP stream
 #
 # Start: python3 phase5-dashboard/app.py
@@ -47,17 +49,16 @@ try:
 except Exception:
     HAS_LLM = False
 
-IKB_LOG  = os.path.join(REPO_ROOT, "..", "phase3-models", "ikb", "incidents.jsonl")
-ACP_DIR  = os.path.join(REPO_ROOT, "..", "phase3-models", "acp_logs")
-SAVE_DIR = os.path.join(REPO_ROOT, "..", "phase3-models", "saved")
+IKB_LOG          = os.path.join(REPO_ROOT, "..", "phase3-models", "ikb", "incidents.jsonl")
+ACP_DIR          = os.path.join(REPO_ROOT, "..", "phase3-models", "acp_logs")
+SAVE_DIR         = os.path.join(REPO_ROOT, "..", "phase3-models", "saved")
+POLICY_OVERRIDE  = os.path.join(REPO_ROOT, "..", "phase3-models", "policy_overrides.json")
 
-app = FastAPI(title="Project Aether NOC Copilot", version="4.0.0")
+app = FastAPI(title="Project Aether NOC Copilot", version="5.0.0")
 
-# Singleton state
 _graph_engine = ClonalGraphEngine()
 _copilot = None
 _connected_ws: list[WebSocket] = []
-_acp_log_pos: int = 0  # byte offset for tailing incidents.jsonl
 
 
 def _get_copilot():
@@ -70,6 +71,16 @@ def _get_copilot():
     return _copilot
 
 
+def _load_policy_overrides() -> dict:
+    if os.path.exists(POLICY_OVERRIDE):
+        try:
+            with open(POLICY_OVERRIDE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
 # ── HTML Dashboard ────────────────────────────────────────────────────────────
 
 DASHBOARD_HTML = """<!DOCTYPE html>
@@ -79,282 +90,858 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Project Aether — NOC Copilot</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:13px}
-  header{background:#161b27;border-bottom:1px solid #30363d;padding:12px 20px;display:flex;align-items:center;gap:16px}
-  header h1{color:#58a6ff;font-size:16px;letter-spacing:1px}
-  .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold}
-  .badge-green{background:#1a3a2a;color:#3fb950}
-  .badge-red{background:#3a1a1a;color:#f85149}
-  .badge-yellow{background:#3a2e1a;color:#e3b341}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px;height:calc(100vh - 50px)}
-  .panel{background:#161b27;border:1px solid #30363d;border-radius:6px;overflow:hidden;display:flex;flex-direction:column}
-  .panel-header{background:#1c2230;padding:8px 14px;border-bottom:1px solid #30363d;font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center}
-  .panel-body{flex:1;overflow-y:auto;padding:10px}
-  .alert{border-left:3px solid;margin-bottom:8px;padding:8px 10px;border-radius:0 4px 4px 0;font-size:12px;cursor:pointer;transition:background 0.1s}
-  .alert:hover{background:#1c2230}
-  .alert-CRITICAL{border-color:#f85149;background:#1e1014}
-  .alert-HIGH{border-color:#e3b341;background:#1e1a10}
-  .alert-MEDIUM{border-color:#58a6ff;background:#10161e}
-  .alert-LOW{border-color:#3fb950;background:#101e12}
-  .alert-title{color:#e6edf3;font-weight:bold;margin-bottom:4px}
-  .alert-meta{color:#8b949e;font-size:11px}
-  #topo-canvas{width:100%;height:100%;min-height:200px}
-  #nlq-input{width:calc(100% - 70px);background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;border-radius:4px;font-family:inherit;font-size:13px}
-  #nlq-btn{background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px}
-  #nlq-btn:hover{background:#2ea043}
-  #nlq-output{padding:10px;background:#0d1117;border-radius:4px;margin-top:8px;min-height:60px;white-space:pre-wrap;color:#c9d1d9;font-size:12px;line-height:1.6}
-  .stat-row{display:flex;justify-content:space-between;margin-bottom:6px;padding:4px 0;border-bottom:1px solid #21262d}
-  .stat-label{color:#8b949e}
-  .stat-val{color:#e6edf3;font-weight:bold}
-  .node{fill:#1c2230;stroke:#58a6ff;stroke-width:1.5}
-  .node-pe{fill:#1a2e4a;stroke:#58a6ff}
-  .node-p{fill:#2e1a4a;stroke:#a371f7}
-  .node-ce{fill:#1a2e1a;stroke:#3fb950}
-  .link{stroke:#30363d;stroke-width:1.5}
-  .link-degraded{stroke:#f85149;stroke-width:3;stroke-dasharray:5,3}
-  .node-label{fill:#c9d1d9;font-size:10px;font-family:monospace}
-  .severity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-  .dot-CRITICAL{background:#f85149}
-  .dot-HIGH{background:#e3b341}
-  .dot-MEDIUM{background:#58a6ff}
-  .dot-LOW{background:#3fb950}
-  #compliance-badge{font-size:11px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:13px;display:flex;flex-direction:column}
+/* ── Header ── */
+#app-header{background:#161b27;border-bottom:1px solid #30363d;padding:0 16px;display:flex;align-items:center;gap:14px;flex-shrink:0;height:48px;z-index:10}
+#hamburger{background:none;border:none;color:#58a6ff;font-size:20px;cursor:pointer;padding:4px 6px;border-radius:4px;line-height:1;flex-shrink:0}
+#hamburger:hover{background:#1c2230}
+#app-title{color:#58a6ff;font-size:15px;letter-spacing:1px;white-space:nowrap}
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;white-space:nowrap}
+.badge-green{background:#1a3a2a;color:#3fb950}
+.badge-red{background:#3a1a1a;color:#f85149}
+.badge-yellow{background:#3a2e1a;color:#e3b341}
+.badge-blue{background:#1a2540;color:#58a6ff}
+#header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+#clock{color:#484f58;font-size:11px}
+/* ── App body ── */
+#app-body{display:flex;flex:1;overflow:hidden}
+/* ── Sidebar ── */
+#sidebar{width:220px;min-width:220px;background:#0d1117;border-right:1px solid #30363d;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
+#sidebar.collapsed{width:48px;min-width:48px}
+.sidebar-section{padding:10px 14px 2px;color:#484f58;font-size:10px;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .1s}
+#sidebar.collapsed .sidebar-section{opacity:0;height:0;padding:0}
+.nav-item{padding:9px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;color:#8b949e;border-left:3px solid transparent;transition:color .1s,background .1s,border-color .1s;white-space:nowrap;user-select:none}
+.nav-item:hover{background:#161b27;color:#c9d1d9}
+.nav-item.active{color:#58a6ff;border-left-color:#58a6ff;background:#161b27}
+.nav-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.nav-label{font-size:13px;overflow:hidden;opacity:1;transition:opacity .15s}
+#sidebar.collapsed .nav-label{opacity:0;width:0;overflow:hidden}
+/* sidebar footer */
+#sidebar-footer{margin-top:auto;padding:10px 14px;border-top:1px solid #21262d;font-size:11px;color:#484f58;white-space:nowrap;overflow:hidden}
+#sidebar.collapsed #sidebar-footer{display:none}
+/* ── Main content ── */
+#main-content{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.view{display:none;flex:1;overflow:hidden}
+.view.active{display:flex}
+/* ── Layouts ── */
+.split-h{display:flex;flex-direction:row;gap:10px;padding:10px;flex:1;overflow:hidden}
+.split-v{display:flex;flex-direction:column;gap:10px;padding:10px;flex:1;overflow:hidden}
+.col-60{flex:0 0 60%;overflow:hidden;display:flex;flex-direction:column}
+.col-40{flex:0 0 40%;overflow:hidden;display:flex;flex-direction:column}
+/* ── Panels ── */
+.panel{background:#161b27;border:1px solid #30363d;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0}
+.panel-header{background:#1c2230;padding:8px 14px;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.panel-body{flex:1;overflow-y:auto;padding:10px;min-height:0}
+.panel-body-nopad{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+/* ── Alerts ── */
+.alert{border-left:3px solid;margin-bottom:8px;padding:8px 10px;border-radius:0 4px 4px 0;font-size:12px;cursor:pointer;transition:background .1s}
+.alert:hover{background:#1c2230}
+.alert-CRITICAL{border-color:#f85149;background:#1e1014}
+.alert-HIGH{border-color:#e3b341;background:#1e1a10}
+.alert-MEDIUM{border-color:#58a6ff;background:#10161e}
+.alert-LOW{border-color:#3fb950;background:#101e12}
+.alert-title{color:#e6edf3;font-weight:bold;margin-bottom:3px}
+.alert-meta{color:#8b949e;font-size:11px}
+.alert-rationale{margin-top:4px;color:#6e7681;font-size:11px}
+.severity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.dot-CRITICAL{background:#f85149}
+.dot-HIGH{background:#e3b341}
+.dot-MEDIUM{background:#58a6ff}
+.dot-LOW{background:#3fb950}
+/* ── Topology SVG ── */
+.topo-wrap{flex:1;min-height:0;position:relative;overflow:hidden}
+svg.topo-svg{width:100%;height:100%}
+.node{fill:#1c2230;stroke:#58a6ff;stroke-width:1.5}
+.node-pe{fill:#1a2e4a;stroke:#58a6ff}
+.node-p{fill:#2e1a4a;stroke:#a371f7}
+.node-ce{fill:#1a2e1a;stroke:#3fb950}
+.link{stroke:#30363d;stroke-width:1.5}
+.link-degraded{stroke:#f85149;stroke-width:3;stroke-dasharray:6,3;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-9}}
+.node-label{fill:#c9d1d9;font-size:10px;font-family:monospace;pointer-events:none}
+.topo-legend{position:absolute;bottom:6px;left:10px;font-size:10px;color:#484f58;display:flex;gap:12px}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-line{width:18px;height:2px;display:inline-block}
+.legend-deg{background:#f85149}
+.legend-ok{background:#30363d}
+/* ── Time-travel ── */
+#tt-slider{width:100%;margin:6px 0;accent-color:#58a6ff;cursor:pointer}
+#tt-controls{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #21262d;flex-shrink:0}
+#tt-live-btn{background:#238636;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px}
+#tt-live-btn:hover{background:#2ea043}
+#tt-live-btn.dimmed{background:#21262d;color:#8b949e}
+#tt-time-label{color:#8b949e;font-size:11px;flex:1;text-align:center}
+#tt-event{font-size:12px;color:#c9d1d9}
+#tt-event .ev-fault{font-size:14px;font-weight:bold;color:#e6edf3;margin-bottom:6px}
+#tt-event .ev-meta{color:#8b949e;margin-bottom:6px;font-size:11px}
+#tt-event .ev-rationale{color:#6e7681;font-size:11px}
+/* ── Autonomy Matrix ── */
+.matrix-table{width:100%;border-collapse:collapse;font-size:12px}
+.matrix-table th{background:#1c2230;color:#8b949e;padding:8px 12px;text-align:left;font-weight:normal;text-transform:uppercase;font-size:10px;letter-spacing:1px;border-bottom:1px solid #30363d}
+.matrix-table td{padding:10px 12px;border-bottom:1px solid #21262d;vertical-align:middle}
+.matrix-table tr:hover td{background:#1c2230}
+.matrix-action{color:#e6edf3;font-weight:bold}
+.matrix-desc{color:#6e7681;font-size:11px;margin-top:2px}
+.matrix-conf input[type=number]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:3px 6px;border-radius:4px;width:70px;font-family:inherit;font-size:12px}
+.toggle-wrap{display:flex;align-items:center;gap:8px}
+.toggle{position:relative;width:40px;height:20px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;top:0;left:0;right:0;bottom:0;background:#21262d;border-radius:10px;transition:.2s}
+.toggle-slider:before{position:absolute;content:'';height:14px;width:14px;left:3px;bottom:3px;background:#8b949e;border-radius:50%;transition:.2s}
+.toggle input:checked + .toggle-slider{background:#238636}
+.toggle input:checked + .toggle-slider:before{transform:translateX(20px);background:white}
+.toggle-locked{opacity:0.35;cursor:not-allowed}
+.matrix-save-btn{background:#238636;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
+.matrix-save-btn:hover{background:#2ea043}
+.matrix-save-btn:disabled{background:#21262d;color:#484f58;cursor:not-allowed}
+.matrix-save-status{font-size:11px;color:#3fb950;margin-left:8px}
+.matrix-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.matrix-header-row h3{color:#e6edf3;font-size:14px}
+.safety-notice{background:#1c2230;border:1px solid #30363d;border-radius:4px;padding:8px 12px;font-size:11px;color:#8b949e;margin-bottom:14px}
+.safety-notice span{color:#e3b341}
+/* ── NLQ ── */
+#nlq-input{width:calc(100% - 70px);background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;border-radius:4px;font-family:inherit;font-size:13px}
+#nlq-btn{background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px}
+#nlq-btn:hover{background:#2ea043}
+#nlq-output{padding:10px;background:#0d1117;border-radius:4px;margin-top:8px;min-height:80px;white-space:pre-wrap;color:#c9d1d9;font-size:12px;line-height:1.6}
+.quick-btn{background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit}
+.quick-btn:hover{background:#21262d}
+/* ── Stat rows ── */
+.stat-row{display:flex;justify-content:space-between;margin-bottom:6px;padding:4px 0;border-bottom:1px solid #21262d}
+.stat-label{color:#8b949e}
+.stat-val{color:#e6edf3;font-weight:bold}
 </style>
 </head>
 <body>
-<header>
-  <h1>⬡ PROJECT AETHER — NOC COPILOT</h1>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<div id="app-header">
+  <button id="hamburger" onclick="toggleSidebar()" title="Toggle menu">&#9776;</button>
+  <span id="app-title">&#11041; PROJECT AETHER &mdash; NOC COPILOT</span>
   <span class="badge badge-green" id="status-badge">ONLINE</span>
-  <span style="color:#8b949e;font-size:11px">Air-Gapped MPLS Predictive Operations</span>
-  <span class="badge" id="compliance-badge">CHECKING...</span>
-  <span style="margin-left:auto;color:#8b949e;font-size:11px" id="clock"></span>
-</header>
-
-<div class="grid">
-  <!-- Topology -->
-  <div class="panel">
-    <div class="panel-header">Live Topology <span id="topo-status" style="color:#3fb950">●</span></div>
-    <div class="panel-body" style="padding:0">
-      <svg id="topo-canvas" viewBox="0 0 460 280"></svg>
-    </div>
-  </div>
-
-  <!-- Alerts -->
-  <div class="panel">
-    <div class="panel-header">Alert Feed <span id="alert-count" class="badge badge-yellow">0</span></div>
-    <div class="panel-body" id="alert-feed"></div>
-  </div>
-
-  <!-- LLM Copilot -->
-  <div class="panel">
-    <div class="panel-header">Copilot — Natural Language Query</div>
-    <div class="panel-body">
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <input id="nlq-input" placeholder="Ask anything: 'What is wrong with pe1?' / 'How do I fix BGP flap?'" onkeydown="if(event.key==='Enter')nlqSend()">
-        <button id="nlq-btn" onclick="nlqSend()">Ask</button>
-      </div>
-      <div id="nlq-output">Type a question above. Powered by Mistral 7B (offline).</div>
-      <div style="margin-top:10px;border-top:1px solid #21262d;padding-top:8px">
-        <div style="color:#8b949e;font-size:11px;margin-bottom:6px">QUICK QUERIES</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">
-          <button onclick="quickQ('What is likely to fail next?')" style="background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">What fails next?</button>
-          <button onclick="quickQ('Why is risk elevated?')" style="background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">Why elevated?</button>
-          <button onclick="quickQ('How do I fix BGP neighbor flap on pe1?')" style="background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">Fix BGP flap?</button>
-          <button onclick="quickQ('Show me the mitigation steps for packet loss')" style="background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">Fix packet loss?</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- System Stats -->
-  <div class="panel">
-    <div class="panel-header">System Status</div>
-    <div class="panel-body" id="stats-panel">
-      <div class="stat-row"><span class="stat-label">Models</span><span class="stat-val" id="stat-models">loading...</span></div>
-      <div class="stat-row"><span class="stat-label">LLM Copilot</span><span class="stat-val" id="stat-llm">checking...</span></div>
-      <div class="stat-row"><span class="stat-label">IKB (ChromaDB)</span><span class="stat-val" id="stat-ikb">checking...</span></div>
-      <div class="stat-row"><span class="stat-label">ACPs logged</span><span class="stat-val" id="stat-acps">0</span></div>
-      <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-val" id="stat-uptime">0s</span></div>
-      <div style="margin-top:10px;border-top:1px solid #21262d;padding-top:8px;color:#8b949e;font-size:11px">RECENT ALERTS</div>
-      <div id="recent-summary" style="margin-top:6px;font-size:11px;color:#8b949e">No alerts yet</div>
-    </div>
+  <span class="badge" id="compliance-badge">CHECKING&hellip;</span>
+  <div id="header-right">
+    <span class="badge badge-blue" id="alert-count-badge">0 alerts</span>
+    <span id="clock"></span>
   </div>
 </div>
 
+<!-- ── App body ──────────────────────────────────────────────────────── -->
+<div id="app-body">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-section">Views</div>
+
+    <div class="nav-item active" data-nav="network" onclick="showPanel('network')">
+      <span class="nav-icon">&#128302;</span>
+      <span class="nav-label">Live Network</span>
+    </div>
+    <div class="nav-item" data-nav="alerts" onclick="showPanel('alerts')">
+      <span class="nav-icon">&#128276;</span>
+      <span class="nav-label">Alert Feed</span>
+    </div>
+    <div class="nav-item" data-nav="copilot" onclick="showPanel('copilot')">
+      <span class="nav-icon">&#129302;</span>
+      <span class="nav-label">NLQ Copilot</span>
+    </div>
+
+    <div class="sidebar-section">Tools</div>
+
+    <div class="nav-item" data-nav="timetravel" onclick="showPanel('timetravel')">
+      <span class="nav-icon">&#9197;</span>
+      <span class="nav-label">Time-Travel</span>
+    </div>
+    <div class="nav-item" data-nav="matrix" onclick="showPanel('matrix')">
+      <span class="nav-icon">&#9881;</span>
+      <span class="nav-label">Autonomy Matrix</span>
+    </div>
+
+    <div id="sidebar-footer">
+      <div class="stat-row" style="border:0;margin:0;padding:2px 0">
+        <span class="stat-label">Models</span>
+        <span class="stat-val" id="sb-models" style="font-size:11px">&#8230;</span>
+      </div>
+      <div class="stat-row" style="border:0;margin:0;padding:2px 0">
+        <span class="stat-label">LLM</span>
+        <span class="stat-val" id="sb-llm" style="font-size:11px">&#8230;</span>
+      </div>
+      <div class="stat-row" style="border:0;margin:0;padding:2px 0">
+        <span class="stat-label">IKB docs</span>
+        <span class="stat-val" id="sb-ikb" style="font-size:11px">&#8230;</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div id="main-content">
+
+    <!-- ── VIEW: Live Network ─────────────────────────────────────── -->
+    <div class="view active split-h" id="view-network">
+      <div class="col-60">
+        <div class="panel" style="height:100%">
+          <div class="panel-header">
+            Live Topology
+            <span id="topo-live-dot" style="color:#3fb950;font-size:14px">&#9679;</span>
+          </div>
+          <div class="panel-body-nopad">
+            <div class="topo-wrap">
+              <svg id="topo-canvas" class="topo-svg" viewBox="0 0 460 280" preserveAspectRatio="xMidYMid meet"></svg>
+              <div class="topo-legend">
+                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
+                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
+              </div>
+            </div>
+            <div id="topo-status-bar" style="padding:6px 10px;border-top:1px solid #21262d;font-size:11px;color:#484f58;flex-shrink:0">
+              Monitoring live &mdash; waiting for fault events&hellip;
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-40">
+        <div class="panel" style="height:100%">
+          <div class="panel-header">
+            Recent Alerts
+            <span id="mini-feed-count" class="badge badge-yellow">0</span>
+          </div>
+          <div class="panel-body" id="mini-feed"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: Alert Feed ──────────────────────────────────────── -->
+    <div class="view split-v" id="view-alerts">
+      <div class="panel" style="flex:1">
+        <div class="panel-header">
+          Alert Feed &mdash; All Events
+          <span id="full-feed-count" class="badge badge-yellow">0</span>
+        </div>
+        <div class="panel-body" id="full-feed"></div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: NLQ Copilot ─────────────────────────────────────── -->
+    <div class="view split-v" id="view-copilot">
+      <div class="panel" style="flex:1">
+        <div class="panel-header">Copilot &mdash; Natural Language Query (Mistral 7B &bull; Offline)</div>
+        <div class="panel-body">
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <input id="nlq-input" placeholder="Ask: 'What will fail next?' / 'How do I fix BGP flap on pe1?'" onkeydown="if(event.key==='Enter')nlqSend()">
+            <button id="nlq-btn" onclick="nlqSend()">Ask</button>
+          </div>
+          <div id="nlq-output">Type a question above or click a quick query. Powered by Mistral 7B (offline).</div>
+          <div style="margin-top:12px;border-top:1px solid #21262d;padding-top:10px">
+            <div style="color:#8b949e;font-size:11px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Quick Queries</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <button class="quick-btn" onclick="quickQ('What is likely to fail next and when?')">What fails next?</button>
+              <button class="quick-btn" onclick="quickQ('Why is risk elevated on the network?')">Why elevated?</button>
+              <button class="quick-btn" onclick="quickQ('How do I fix BGP neighbor flap on pe1?')">Fix BGP flap?</button>
+              <button class="quick-btn" onclick="quickQ('Show me mitigation steps for packet loss on the pe1-p1 link')">Fix packet loss?</button>
+              <button class="quick-btn" onclick="quickQ('What is the autonomy policy and what actions are auto-executed?')">Autonomy policy?</button>
+              <button class="quick-btn" onclick="quickQ('Show the most recent anomaly context packet and explain it')">Last ACP?</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: Time-Travel ─────────────────────────────────────── -->
+    <div class="view split-h" id="view-timetravel">
+      <div class="col-60">
+        <div class="panel" style="height:100%">
+          <div class="panel-header">
+            Topology Playback
+            <span id="tt-snapshot-count" style="font-size:11px;color:#8b949e">0 snapshots</span>
+          </div>
+          <div class="panel-body-nopad">
+            <div class="topo-wrap">
+              <svg id="tt-canvas" class="topo-svg" viewBox="0 0 460 280" preserveAspectRatio="xMidYMid meet"></svg>
+              <div class="topo-legend">
+                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
+                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
+              </div>
+            </div>
+            <div id="tt-controls">
+              <button id="tt-live-btn" class="dimmed" onclick="resumeLive()">&#9654; Live</button>
+              <input type="range" id="tt-slider" min="0" max="0" value="0" style="flex:1" oninput="scrubHistory(+this.value)">
+              <span id="tt-time-label">No snapshots yet</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-40">
+        <div class="panel" style="height:100%">
+          <div class="panel-header">Event at Selected Time</div>
+          <div class="panel-body" id="tt-event">
+            <div style="color:#484f58;font-size:12px;margin-top:20px;text-align:center">
+              Drag the slider to replay historical topology states.<br><br>
+              Each fault event is captured as a snapshot.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: Autonomy Matrix ─────────────────────────────────── -->
+    <div class="view split-v" id="view-matrix">
+      <div class="panel" style="flex:1">
+        <div class="panel-header">
+          Autonomy Policy Matrix
+          <span style="font-size:11px;color:#8b949e">Controls what the Edge Policy Engine executes vs. recommends</span>
+        </div>
+        <div class="panel-body" id="matrix-panel">
+          <div class="matrix-header-row">
+            <h3>Operator Autonomy Configuration</h3>
+            <div>
+              <button class="matrix-save-btn" id="matrix-save-btn" onclick="saveMatrix()">Save Changes</button>
+              <span class="matrix-save-status" id="matrix-save-status"></span>
+            </div>
+          </div>
+          <div class="safety-notice">
+            <span>&#9888; Safety floors enforced in code regardless of this table:</span>
+            model disagreement always downgrades to RECOMMEND_ONLY &bull;
+            all auto-executed actions are logged and reversible &bull;
+            locked rows require operator escalation.
+          </div>
+          <div id="matrix-table-wrap">Loading policy&hellip;</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #main-content -->
+</div><!-- #app-body -->
+
 <script>
-// ── Clock ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Navigation / Sidebar
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+
+function showPanel(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('[data-nav="' + name + '"]').classList.add('active');
+  if (name === 'matrix') loadMatrix();
+  if (name === 'timetravel') refreshTTCanvas();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clock
+// ─────────────────────────────────────────────────────────────────────────────
 function updateClock() {
-  document.getElementById('clock').textContent = new Date().toISOString().replace('T',' ').slice(0,19)+' UTC';
+  document.getElementById('clock').textContent =
+    new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }
 setInterval(updateClock, 1000); updateClock();
 
-// ── Topology SVG ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Topology
+// ─────────────────────────────────────────────────────────────────────────────
 const NODES = {
-  'pe1':       {x:160,y:130,cls:'node-pe',label:'PE1'},
-  'p1':        {x:230,y:80, cls:'node-p', label:'P1'},
-  'pe2':       {x:300,y:130,cls:'node-pe',label:'PE2'},
-  'ce-branch1':{x:80, y:200,cls:'node-ce',label:'Branch1'},
-  'ce-hub':    {x:155,y:220,cls:'node-ce',label:'Hub'},
-  'ce-branch2':{x:310,y:200,cls:'node-ce',label:'Branch2'},
-  'ce-dc':     {x:380,y:220,cls:'node-ce',label:'DC'},
+  'pe1':       {x:160, y:130, cls:'node-pe', label:'PE1'},
+  'p1':        {x:230, y:80,  cls:'node-p',  label:'P1'},
+  'pe2':       {x:300, y:130, cls:'node-pe', label:'PE2'},
+  'ce-branch1':{x:80,  y:210, cls:'node-ce', label:'Branch1'},
+  'ce-hub':    {x:155, y:220, cls:'node-ce', label:'Hub'},
+  'ce-branch2':{x:310, y:210, cls:'node-ce', label:'Branch2'},
+  'ce-dc':     {x:385, y:220, cls:'node-ce', label:'DC'},
 };
 const LINKS = [
-  ['pe1','p1'],['p1','pe2'],['pe1','ce-branch1'],
-  ['pe1','ce-hub'],['pe2','ce-branch2'],['pe2','ce-dc'],
-  ['pe1','pe2'],
+  ['pe1','p1'], ['p1','pe2'], ['pe1','pe2'],
+  ['pe1','ce-branch1'], ['pe1','ce-hub'],
+  ['pe2','ce-branch2'], ['pe2','ce-dc'],
 ];
-const svg = document.getElementById('topo-canvas');
-let degradedLinks = new Set();
+const LINK_SET = new Set(LINKS.map(([a,b]) => a+'→'+b));
 
-function drawTopo() {
+// Map feature prefix → node id
+const FEAT_PREFIX = [
+  ['pe1_','pe1'], ['pe2_','pe2'], ['p1_','p1'],
+  ['ce_hub_','ce-hub'], ['ce_branch1_','ce-branch1'],
+  ['ce_branch2_','ce-branch2'], ['ce_dc_','ce-dc'],
+];
+
+function featuresToNodes(features) {
+  const found = new Set();
+  for (const feat of (features || [])) {
+    for (const [prefix, node] of FEAT_PREFIX) {
+      if (feat.startsWith(prefix)) { found.add(node); break; }
+    }
+  }
+  return [...found];
+}
+
+function deriveAffectedLinks(acp) {
+  // Start with explicit paths_impacted (contains CE-to-CE paths, not PE links)
+  const links = new Set();
+
+  // Parse top_features to find affected PE/P nodes
+  const affectedNodes = featuresToNodes(acp.top_features || []);
+
+  // Find existing links between those nodes
+  for (let i = 0; i < affectedNodes.length; i++) {
+    for (let j = i + 1; j < affectedNodes.length; j++) {
+      const fwd = affectedNodes[i] + '→' + affectedNodes[j];
+      const rev = affectedNodes[j] + '→' + affectedNodes[i];
+      if (LINK_SET.has(fwd)) links.add(fwd);
+      if (LINK_SET.has(rev)) links.add(rev);
+    }
+  }
+
+  // pe1→p1 is always highlighted for any non-Healthy fault
+  // (the fault streamer targets the pe1-p1 segment)
+  if (acp.fault_class && acp.fault_class !== 'Healthy') {
+    links.add('pe1→p1');
+  }
+
+  return links;
+}
+
+function drawTopoOnSvg(svgId, degradedLinks) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
   svg.innerHTML = '';
-  // Links
-  LINKS.forEach(([a,b]) => {
-    const na=NODES[a],nb=NODES[b];
-    const isDeg = degradedLinks.has(a+'→'+b)||degradedLinks.has(b+'→'+a);
-    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-    Object.assign(line,{});
-    line.setAttribute('x1',na.x); line.setAttribute('y1',na.y);
-    line.setAttribute('x2',nb.x); line.setAttribute('y2',nb.y);
+  LINKS.forEach(([a, b]) => {
+    const na = NODES[a], nb = NODES[b];
+    const isDeg = degradedLinks.has(a+'→'+b) || degradedLinks.has(b+'→'+a);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', na.x); line.setAttribute('y1', na.y);
+    line.setAttribute('x2', nb.x); line.setAttribute('y2', nb.y);
     line.setAttribute('class', isDeg ? 'link link-degraded' : 'link');
     svg.appendChild(line);
   });
-  // Nodes
-  Object.entries(NODES).forEach(([id,n]) => {
-    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx',n.x); c.setAttribute('cy',n.y); c.setAttribute('r',18);
-    c.setAttribute('class','node '+n.cls); g.appendChild(c);
-    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x',n.x); t.setAttribute('y',n.y+4);
-    t.setAttribute('text-anchor','middle'); t.setAttribute('class','node-label');
-    t.textContent=n.label; g.appendChild(t);
+  Object.entries(NODES).forEach(([id, n]) => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', n.x); c.setAttribute('cy', n.y); c.setAttribute('r', 18);
+    c.setAttribute('class', 'node ' + n.cls);
+    g.appendChild(c);
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', n.x); t.setAttribute('y', n.y + 4);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('class', 'node-label');
+    t.textContent = n.label;
+    g.appendChild(t);
     svg.appendChild(g);
   });
 }
+
+let currentDegradedLinks = new Set();
+
+function drawTopo() { drawTopoOnSvg('topo-canvas', currentDegradedLinks); }
 drawTopo();
 
-// ── Alert renderer (shared by history load + WebSocket) ───────────────────
-let alertCount = 0;
-const feed = document.getElementById('alert-feed');
+function applyFaultToTopo(acp) {
+  const newLinks = (acp.fault_class && acp.fault_class !== 'Healthy')
+    ? deriveAffectedLinks(acp)
+    : new Set();
+  currentDegradedLinks = newLinks;
+  drawTopo();
 
-function renderAlert(acp, prepend=true) {
-  alertCount++;
-  document.getElementById('alert-count').textContent = alertCount;
-  const div = document.createElement('div');
-  div.className = 'alert alert-'+(acp.severity||'MEDIUM');
-  const conf = acp.confidence != null ? ((acp.confidence||0)*100).toFixed(0)+'%' : '?';
-  const ttf  = acp.ttf != null && acp.ttf >= 0 ? acp.ttf.toFixed(0)+'s' : '?';
-  div.innerHTML = `<div class="alert-title">
-    <span class="severity-dot dot-${acp.severity||'MEDIUM'}"></span>
-    ${acp.fault_class||'Unknown'} &mdash; ${acp.severity||'?'}
-  </div>
-  <div class="alert-meta">
-    conf=${conf} | ttf=${ttf} | mode=${acp.execution_mode||'?'} | ${(acp.timestamp||'').slice(11,19)} UTC
-  </div>
-  <div style="margin-top:4px;color:#8b949e;font-size:11px">${(acp.rationale||'').slice(0,130)}</div>`;
-  div.onclick = () => loadExplanation(acp.acp_id);
-  if (prepend) feed.prepend(div); else feed.appendChild(div);
-  // Mark affected links as degraded in topology
-  if (acp.fault_class && acp.fault_class !== 'Healthy') {
-    degradedLinks.add('pe1→p1');
-    drawTopo();
-    setTimeout(() => { degradedLinks.delete('pe1→p1'); drawTopo(); }, 30000);
+  const bar = document.getElementById('topo-status-bar');
+  if (bar) {
+    if (newLinks.size > 0) {
+      const linkList = [...newLinks].join(', ');
+      bar.textContent = `DEGRADED: ${acp.fault_class} — affected links: ${linkList}`;
+      bar.style.color = '#f85149';
+    } else {
+      bar.textContent = 'All links nominal';
+      bar.style.color = '#3fb950';
+    }
   }
 }
 
-// ── Load historical ACPs on page open ─────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Time-Travel
+// ─────────────────────────────────────────────────────────────────────────────
+const topoHistory = [];
+let ttMode = 'live'; // 'live' | 'scrub'
+let ttIdx = 0;
+
+function addTopoSnapshot(acp) {
+  const snap = {
+    timestamp  : acp.timestamp || acp.acp_id,
+    acp_id     : acp.acp_id,
+    fault_class: acp.fault_class || 'Unknown',
+    severity   : acp.severity || 'MEDIUM',
+    confidence : acp.confidence,
+    rationale  : acp.rationale || '',
+    ttf        : acp.ttf,
+    degradedLinks: deriveAffectedLinks(acp),
+  };
+  topoHistory.push(snap);
+
+  const slider = document.getElementById('tt-slider');
+  if (slider) {
+    slider.max = topoHistory.length - 1;
+    if (ttMode === 'live') {
+      slider.value = topoHistory.length - 1;
+      ttIdx = topoHistory.length - 1;
+      refreshTTCanvas();
+    }
+  }
+  document.getElementById('tt-snapshot-count').textContent =
+    topoHistory.length + ' snapshot' + (topoHistory.length === 1 ? '' : 's');
+}
+
+function scrubHistory(idx) {
+  ttMode = 'scrub';
+  ttIdx = +idx;
+  document.getElementById('tt-live-btn').classList.remove('dimmed');
+  refreshTTCanvas();
+}
+
+function resumeLive() {
+  ttMode = 'live';
+  ttIdx = topoHistory.length - 1;
+  const slider = document.getElementById('tt-slider');
+  if (slider) slider.value = ttIdx;
+  document.getElementById('tt-live-btn').classList.add('dimmed');
+  refreshTTCanvas();
+}
+
+function refreshTTCanvas() {
+  if (topoHistory.length === 0) {
+    drawTopoOnSvg('tt-canvas', new Set());
+    document.getElementById('tt-time-label').textContent = 'No snapshots yet';
+    return;
+  }
+  const snap = topoHistory[ttIdx] || topoHistory[topoHistory.length - 1];
+  drawTopoOnSvg('tt-canvas', snap.degradedLinks);
+
+  const ts = (snap.timestamp || '').slice(11, 19);
+  document.getElementById('tt-time-label').textContent =
+    (ttMode === 'live' ? '▶ Live: ' : '') + (snap.timestamp || '').slice(0, 19) + ' UTC';
+
+  const conf = snap.confidence != null ? (snap.confidence * 100).toFixed(0) + '%' : '?';
+  const ttf  = snap.ttf != null && snap.ttf >= 0 ? snap.ttf.toFixed(0) + 's' : '?';
+  const sevColor = {CRITICAL:'#f85149',HIGH:'#e3b341',MEDIUM:'#58a6ff',LOW:'#3fb950'}[snap.severity] || '#8b949e';
+  document.getElementById('tt-event').innerHTML = `
+    <div class="ev-fault" style="color:${sevColor}">${snap.fault_class}</div>
+    <div class="ev-meta">
+      <span class="badge badge-${snap.severity === 'CRITICAL' ? 'red' : snap.severity === 'HIGH' ? 'yellow' : 'blue'}">${snap.severity}</span>
+      &nbsp;conf=${conf} &nbsp;ttf=${ttf}<br>
+      <span style="color:#484f58">${(snap.timestamp||'').replace('T',' ').slice(0,19)} UTC</span>
+    </div>
+    <div class="ev-rationale">${snap.rationale.slice(0, 300)}</div>
+    ${snap.degradedLinks.size > 0
+      ? '<div style="margin-top:10px;font-size:11px;color:#8b949e">Degraded links: <span style="color:#f85149">' + [...snap.degradedLinks].join(', ') + '</span></div>'
+      : '<div style="margin-top:10px;font-size:11px;color:#3fb950">All links nominal</div>'}
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alert feed
+// ─────────────────────────────────────────────────────────────────────────────
+let totalAlertCount = 0;
+const seenAcpIds = new Set();
+
+function acpToAlert(entry) {
+  const ml  = entry.ml_analysis  || {};
+  const cor = entry.corroboration || {};
+  return {
+    acp_id        : entry.acp_id,
+    timestamp     : entry.timestamp,
+    severity      : entry.severity || 'MEDIUM',
+    fault_class   : ml.predicted_fault_class || entry.fault_class || 'Unknown',
+    confidence    : ml.confidence_score != null ? ml.confidence_score : entry.confidence,
+    ttf           : ml.estimated_time_to_failure_sec != null ? ml.estimated_time_to_failure_sec : entry.ttf,
+    execution_mode: cor.execution_mode || entry.execution_mode || 'RECOMMEND_ONLY',
+    rationale     : cor.rationale || entry.rationale || '',
+    action        : cor.recommended_action || entry.action || 'NO_ACTION',
+    top_features  : entry.top_features || [],
+    paths_impacted: (entry.graph_analysis || {}).paths_impacted || entry.paths_impacted || [],
+  };
+}
+
+function renderAlert(acp, prepend) {
+  totalAlertCount++;
+  document.getElementById('alert-count-badge').textContent = totalAlertCount + ' alert' + (totalAlertCount === 1 ? '' : 's');
+  document.getElementById('mini-feed-count').textContent = totalAlertCount;
+  document.getElementById('full-feed-count').textContent = totalAlertCount;
+
+  const conf = acp.confidence != null ? (acp.confidence * 100).toFixed(0) + '%' : '?';
+  const ttf  = acp.ttf != null && acp.ttf >= 0 ? acp.ttf.toFixed(0) + 's' : '?';
+  const ts   = (acp.timestamp || '').slice(11, 19);
+
+  function makeDiv() {
+    const div = document.createElement('div');
+    div.className = 'alert alert-' + (acp.severity || 'MEDIUM');
+    div.innerHTML = `
+      <div class="alert-title">
+        <span class="severity-dot dot-${acp.severity||'MEDIUM'}"></span>
+        ${acp.fault_class || 'Unknown'} &mdash; ${acp.severity || '?'}
+      </div>
+      <div class="alert-meta">conf=${conf} | ttf=${ttf} | ${acp.execution_mode||'?'} | ${ts} UTC</div>
+      <div class="alert-rationale">${(acp.rationale || '').slice(0, 120)}</div>`;
+    div.onclick = () => { showPanel('copilot'); loadExplanation(acp.acp_id); };
+    return div;
+  }
+
+  const miniDiv = makeDiv();
+  const fullDiv = makeDiv();
+  const mini = document.getElementById('mini-feed');
+  const full = document.getElementById('full-feed');
+  if (prepend) {
+    mini.prepend(miniDiv);
+    full.prepend(fullDiv);
+  } else {
+    mini.appendChild(miniDiv);
+    full.appendChild(fullDiv);
+  }
+
+  // Update live topology and snapshot history
+  applyFaultToTopo(acp);
+  addTopoSnapshot(acp);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load history on startup
+// ─────────────────────────────────────────────────────────────────────────────
 async function loadHistory() {
   try {
     const r = await fetch('/api/acps?limit=50');
     const d = await r.json();
     if (!d.acps || !d.acps.length) return;
-    // Render oldest-first so newest appears at top after prepend
-    const sorted = [...d.acps].reverse();
-    // Build compact payload matching WebSocket format
-    sorted.forEach(entry => {
-      const ml  = entry.ml_analysis || {};
-      const cor = entry.corroboration || {};
-      renderAlert({
-        acp_id        : entry.acp_id,
-        timestamp     : entry.timestamp,
-        severity      : entry.severity || 'MEDIUM',
-        fault_class   : ml.predicted_fault_class || entry.trigger_source || 'Unknown',
-        confidence    : ml.confidence_score,
-        ttf           : ml.estimated_time_to_failure_sec,
-        execution_mode: cor.execution_mode || 'RECOMMEND_ONLY',
-        rationale     : cor.rationale || '',
-        action        : cor.recommended_action || 'NO_ACTION',
-      }, true);
-    });
+    // Render oldest→newest (they're sorted ascending) to build correct snapshot history
+    for (const entry of d.acps) {
+      if (!seenAcpIds.has(entry.acp_id)) {
+        seenAcpIds.add(entry.acp_id);
+        renderAlert(acpToAlert(entry), false);
+      }
+    }
+    // After loading, scroll both feeds to top (newest is what the operator wants to see)
+    document.getElementById('mini-feed').scrollTop = 0;
+    document.getElementById('full-feed').scrollTop = 0;
   } catch(e) { console.error('loadHistory:', e); }
 }
 
-// ── WebSocket for live alerts ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Poll /api/acps every 4 s (fallback for missed WS messages)
+// ─────────────────────────────────────────────────────────────────────────────
+async function pollAlerts() {
+  try {
+    const r = await fetch('/api/acps?limit=30');
+    const d = await r.json();
+    if (!d.acps) return;
+    // Walk newest-first; break once we hit a seen id
+    const newest = [...d.acps].reverse();
+    const batch = [];
+    for (const entry of newest) {
+      if (seenAcpIds.has(entry.acp_id)) break;
+      seenAcpIds.add(entry.acp_id);
+      batch.push(acpToAlert(entry));
+    }
+    // Render in chronological order (oldest first so snapshot history is correct)
+    for (const acp of batch.reverse()) {
+      renderAlert(acp, true);
+    }
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WebSocket — primary live delivery path
+// ─────────────────────────────────────────────────────────────────────────────
 function connectWS() {
-  const ws = new WebSocket('ws://'+location.host+'/ws/alerts');
-  ws.onmessage = e => { renderAlert(JSON.parse(e.data), true); };
+  const ws = new WebSocket('ws://' + location.host + '/ws/alerts');
+  ws.onmessage = e => {
+    try {
+      const acp = JSON.parse(e.data);
+      if (!seenAcpIds.has(acp.acp_id)) {
+        seenAcpIds.add(acp.acp_id);
+        renderAlert(acp, true);
+      }
+    } catch(err) {}
+  };
   ws.onclose = () => setTimeout(connectWS, 3000);
 }
+
 loadHistory();
 connectWS();
+setInterval(pollAlerts, 4000);
 
-// ── NLQ ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// NLQ Copilot
+// ─────────────────────────────────────────────────────────────────────────────
 async function nlqSend() {
   const q = document.getElementById('nlq-input').value.trim();
   if (!q) return;
   const out = document.getElementById('nlq-output');
-  out.textContent = '⟳ Thinking...';
+  out.textContent = '&#8987; Thinking…';
   try {
     const r = await fetch('/api/nlq', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({question: q})
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q}),
     });
     const d = await r.json();
     out.textContent = d.answer || d.error || 'No response';
-  } catch(e) { out.textContent = 'Error: '+e; }
+  } catch(e) { out.textContent = 'Error: ' + e; }
 }
+
 function quickQ(q) {
   document.getElementById('nlq-input').value = q;
   nlqSend();
 }
 
-// ── Status polling ─────────────────────────────────────────────────────────
-let startTime = Date.now();
+async function loadExplanation(acp_id) {
+  if (!acp_id) return;
+  const out = document.getElementById('nlq-output');
+  out.textContent = '&#8987; Generating incident report…';
+  try {
+    const r = await fetch('/api/nlq', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: 'Explain ACP ' + acp_id + ' — what failed, why, and what to do?'}),
+    });
+    const d = await r.json();
+    out.textContent = d.answer || d.error;
+  } catch(e) { out.textContent = 'Error: ' + e; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Autonomy Matrix
+// ─────────────────────────────────────────────────────────────────────────────
+const LOCKED_ACTIONS = new Set(['CORE_PATH_FAILOVER', 'NODE_ISOLATION', 'NO_ACTION']);
+let matrixLoaded = false;
+let currentPolicy = {};
+
+async function loadMatrix() {
+  if (matrixLoaded) return;
+  try {
+    const r = await fetch('/api/policy');
+    currentPolicy = await r.json();
+    renderMatrix(currentPolicy);
+    matrixLoaded = true;
+  } catch(e) {
+    document.getElementById('matrix-table-wrap').innerHTML =
+      '<div style="color:#f85149">Failed to load policy: ' + e + '</div>';
+  }
+}
+
+function renderMatrix(policy) {
+  const ACTION_ORDER = [
+    'REROUTE_BRANCH', 'QOS_SHAPE_QUEUE', 'CORE_PATH_FAILOVER', 'NODE_ISOLATION', 'NO_ACTION'
+  ];
+  let html = `<table class="matrix-table">
+    <thead><tr>
+      <th>Action Class</th>
+      <th>Description</th>
+      <th>Min Confidence</th>
+      <th>Auto-Execute</th>
+      <th></th>
+    </tr></thead><tbody>`;
+
+  for (const action of ACTION_ORDER) {
+    const pol = policy[action] || {};
+    const locked = LOCKED_ACTIONS.has(action);
+    const conf = (pol.min_conf != null ? (pol.min_conf * 100).toFixed(0) : '100');
+    const auto = pol.auto_execute || false;
+    html += `<tr id="row-${action}">
+      <td>
+        <div class="matrix-action">${action}</div>
+        ${locked ? '<div style="font-size:10px;color:#484f58;margin-top:2px">&#128274; LOCKED</div>' : ''}
+      </td>
+      <td><div class="matrix-desc">${pol.description || '—'}</div></td>
+      <td class="matrix-conf">
+        <input type="number" id="conf-${action}" value="${conf}" min="0" max="100" step="5"
+          ${locked ? 'disabled' : ''}
+          style="${locked ? 'opacity:0.35;cursor:not-allowed' : ''}">
+        <span style="color:#8b949e;font-size:11px">%</span>
+      </td>
+      <td>
+        <div class="toggle-wrap ${locked ? 'toggle-locked' : ''}">
+          <label class="toggle">
+            <input type="checkbox" id="auto-${action}" ${auto ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:11px;color:#8b949e" id="auto-label-${action}">${auto ? 'AUTO' : 'RECOMMEND'}</span>
+        </div>
+      </td>
+      <td>
+        ${!locked ? `<button class="matrix-save-btn" onclick="saveRow('${action}')" id="save-${action}">Apply</button>` : ''}
+      </td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  document.getElementById('matrix-table-wrap').innerHTML = html;
+
+  // Wire toggle labels
+  for (const action of ACTION_ORDER) {
+    if (LOCKED_ACTIONS.has(action)) continue;
+    const cb = document.getElementById('auto-' + action);
+    if (cb) cb.addEventListener('change', () => {
+      document.getElementById('auto-label-' + action).textContent = cb.checked ? 'AUTO' : 'RECOMMEND';
+    });
+  }
+}
+
+async function saveRow(action) {
+  const confInput = document.getElementById('conf-' + action);
+  const autoInput = document.getElementById('auto-' + action);
+  const btn = document.getElementById('save-' + action);
+  if (!confInput || !autoInput) return;
+
+  const minConf = parseFloat(confInput.value) / 100;
+  const autoExec = autoInput.checked;
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const r = await fetch('/api/policy', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action, min_conf: minConf, auto_execute: autoExec}),
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      btn.textContent = '&#10003; Saved';
+      btn.style.background = '#0f3a1a';
+      btn.style.color = '#3fb950';
+      setTimeout(() => {
+        btn.textContent = 'Apply'; btn.disabled = false;
+        btn.style.background = ''; btn.style.color = '';
+      }, 2000);
+    } else {
+      throw new Error(d.detail || 'Unknown error');
+    }
+  } catch(e) {
+    btn.textContent = 'Error'; btn.style.background = '#3a0f0f'; btn.style.color = '#f85149';
+    setTimeout(() => { btn.textContent = 'Apply'; btn.disabled = false; btn.style.background=''; btn.style.color=''; }, 2500);
+  }
+}
+
+async function saveMatrix() {
+  // Save all non-locked rows
+  const ALL_ACTIONS = ['REROUTE_BRANCH', 'QOS_SHAPE_QUEUE'];
+  for (const action of ALL_ACTIONS) await saveRow(action);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status polling (updates sidebar footer + header badge)
+// ─────────────────────────────────────────────────────────────────────────────
 async function pollStatus() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
-    document.getElementById('stat-models').textContent = s.models_loaded ? '✓ loaded' : '✗ missing';
-    document.getElementById('stat-llm').textContent = s.llm_online ? '✓ Mistral online' : '⚠ offline (fallback)';
-    document.getElementById('stat-ikb').textContent = s.ikb_docs > 0 ? `✓ ${s.ikb_docs} docs` : '✗ empty';
-    document.getElementById('stat-acps').textContent = s.acp_count || alertCount;
-    const up = Math.floor((Date.now()-startTime)/1000);
-    document.getElementById('stat-uptime').textContent = up+'s';
+    document.getElementById('sb-models').textContent = s.models_loaded ? '&#10003; loaded' : '&#10007; missing';
+    document.getElementById('sb-llm').textContent    = s.llm_online   ? '&#10003; online' : '&#9888; offline';
+    document.getElementById('sb-ikb').textContent    = s.ikb_docs > 0 ? s.ikb_docs + ' docs' : '&#10007; empty';
     const cb = document.getElementById('compliance-badge');
     if (s.air_gap_compliant === true) {
-      cb.textContent = '✓ AIR-GAPPED'; cb.className='badge badge-green';
+      cb.textContent = '&#10003; AIR-GAPPED'; cb.className = 'badge badge-green';
     } else if (s.air_gap_compliant === false) {
-      cb.textContent = '⚠ NOT COMPLIANT'; cb.className='badge badge-red';
+      cb.textContent = '&#9888; NOT COMPLIANT'; cb.className = 'badge badge-red';
     }
   } catch(e) {}
 }
 setInterval(pollStatus, 5000); pollStatus();
-
-async function loadExplanation(acp_id) {
-  if (!acp_id) return;
-  const out = document.getElementById('nlq-output');
-  out.textContent = '⟳ Generating incident report...';
-  try {
-    const r = await fetch('/api/nlq', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({question: `Explain ACP ${acp_id} — what failed, why, and what to do?`})
-    });
-    const d = await r.json();
-    out.textContent = d.answer || d.error;
-  } catch(e) { out.textContent = 'Error: '+e; }
-}
 </script>
 </body>
 </html>"""
@@ -378,7 +965,6 @@ async def status():
         with open(IKB_LOG) as f:
             acp_count = sum(1 for l in f if l.strip())
 
-    # IKB doc count
     ikb_docs = 0
     try:
         import chromadb
@@ -393,10 +979,9 @@ async def status():
     except Exception:
         pass
 
-    # Compliance (quick check)
     from airgap_compliance import _probe
     dns_result = _probe("8.8.8.8", 53)
-    compliant = not dns_result["reachable"]  # in real air-gap, this would be True
+    compliant = not dns_result["reachable"]
 
     return {
         "models_loaded": models_ok,
@@ -430,7 +1015,7 @@ def _load_acp_files(limit: int = 50) -> list[dict]:
     entries = []
     if os.path.exists(ACP_DIR):
         files = sorted(glob.glob(os.path.join(ACP_DIR, "*.json")))
-        for path in files[-limit * 2:]:  # over-fetch, trim after sort
+        for path in files[-limit * 2:]:
             try:
                 with open(path) as f:
                     entries.append(json.load(f))
@@ -448,6 +1033,60 @@ async def get_acps(limit: int = 50):
     return {"acps": entries, "total": total}
 
 
+# ── Autonomy Policy Matrix ────────────────────────────────────────────────────
+
+@app.get("/api/policy")
+async def get_policy():
+    from taxonomy import ACTION_POLICY
+    overrides = _load_policy_overrides()
+    result = {}
+    for action, pol in ACTION_POLICY.items():
+        merged = {**pol}
+        if action in overrides:
+            merged.update(overrides[action])
+        result[action] = merged
+    return result
+
+
+class PolicyUpdate(BaseModel):
+    action: str
+    min_conf: float
+    auto_execute: bool
+
+
+@app.put("/api/policy")
+async def update_policy(req: PolicyUpdate):
+    from taxonomy import ACTION_POLICY
+    LOCKED = {"CORE_PATH_FAILOVER", "NODE_ISOLATION", "NO_ACTION"}
+    if req.action in LOCKED:
+        raise HTTPException(status_code=403, detail=f"{req.action} is a locked policy row")
+    if req.action not in ACTION_POLICY:
+        raise HTTPException(status_code=404, detail=f"Unknown action: {req.action}")
+    if not (0.0 <= req.min_conf <= 1.0):
+        raise HTTPException(status_code=422, detail="min_conf must be between 0 and 1")
+
+    overrides = _load_policy_overrides()
+    overrides[req.action] = {
+        "min_conf": req.min_conf,
+        "auto_execute": req.auto_execute,
+    }
+    with open(POLICY_OVERRIDE, "w") as f:
+        json.dump(overrides, f, indent=2)
+
+    # Apply to running taxonomy in this process
+    import taxonomy
+    taxonomy.ACTION_POLICY[req.action]["min_conf"] = req.min_conf
+    taxonomy.ACTION_POLICY[req.action]["auto_execute"] = req.auto_execute
+
+    return {
+        "status": "ok",
+        "action": req.action,
+        "policy": overrides[req.action],
+    }
+
+
+# ── NLQ ──────────────────────────────────────────────────────────────────────
+
 class NLQRequest(BaseModel):
     question: str
 
@@ -463,9 +1102,11 @@ async def nlq(req: NLQRequest):
     return {"answer": answer, "source": "copilot"}
 
 
+# ── Feedback ─────────────────────────────────────────────────────────────────
+
 class FeedbackRequest(BaseModel):
     acp_id: str
-    feedback: str  # "accepted" | "rejected"
+    feedback: str
 
 
 @app.post("/api/feedback")
@@ -506,9 +1147,10 @@ async def ws_alerts(websocket: WebSocket):
     _connected_ws.append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep-alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        _connected_ws.remove(websocket)
+        if websocket in _connected_ws:
+            _connected_ws.remove(websocket)
 
 
 async def broadcast_acp(acp_dict: dict):
@@ -519,16 +1161,14 @@ async def broadcast_acp(acp_dict: dict):
         except Exception:
             dead.append(ws)
     for ws in dead:
-        _connected_ws.remove(ws)
+        if ws in _connected_ws:
+            _connected_ws.remove(ws)
 
-
-# ── Background: tail incidents.jsonl → broadcast to WebSocket ────────────────
 
 async def _tail_acp_log():
-    """Polls acp_logs/ every 2s for new JSON files, broadcasts to all WebSocket clients."""
+    """Watch acp_logs/ for new JSON files, broadcast to WebSocket clients."""
     import glob
     seen = set()
-    # Pre-populate seen with existing files so we only push NEW ones going forward
     if os.path.exists(ACP_DIR):
         for f in glob.glob(os.path.join(ACP_DIR, "*.json")):
             seen.add(f)
@@ -555,6 +1195,8 @@ async def _tail_acp_log():
                         "execution_mode": cor.get("execution_mode", "RECOMMEND_ONLY"),
                         "rationale"     : cor.get("rationale", ""),
                         "action"        : cor.get("recommended_action", "NO_ACTION"),
+                        "top_features"  : entry.get("top_features", []),
+                        "paths_impacted": (entry.get("graph_analysis") or {}).get("paths_impacted", []),
                     }
                     await broadcast_acp(ws_msg)
                     seen.add(path)
@@ -564,16 +1206,12 @@ async def _tail_acp_log():
             pass
 
 
-# ── Startup event ─────────────────────────────────────────────────────────────
-
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_tail_acp_log())
-    print("[*] Aether NOC Dashboard ready — http://localhost:8080")
-    print("[*] Tailing incidents.jsonl → WebSocket live feed active")
+    print("[*] Aether NOC Dashboard v5.0 — http://localhost:8080")
+    print("[*] Watching acp_logs/ → WebSocket live feed active")
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

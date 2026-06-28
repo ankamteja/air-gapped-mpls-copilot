@@ -120,9 +120,45 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **4** | NLQ interface (intent detection, IKB retrieval, fallback answers) | ✅ Complete |
 | **4** | Runbooks: BGP flap, congestion, packet loss, topology reference | ✅ Complete |
 | **5** | FastAPI NOC dashboard (app.py — topology, alerts, NLQ, compliance) | ✅ Complete |
-| **5** | WebSocket live alert stream | ✅ Complete |
-| **5** | NOC dashboard HTML (dark theme, topology SVG, quick queries) | ✅ Complete |
+| **5** | WebSocket live alert stream + 4s polling dual-path fallback | ✅ Complete |
+| **5** | Left-sidebar SPA — 5 views: Live Network, Alert Feed, NLQ, Time-Travel, Autonomy Matrix | ✅ Complete |
+| **5** | Live topology SVG — pe1↔p1 link highlighted on fault (state-based, no flicker) | ✅ Complete |
+| **5** | Time-Travel Topology Playback — slider scrubs ACP snapshot history | ✅ Complete |
+| **5** | Autonomy Matrix editor — live-editable policy table with per-row PUT to `/api/policy` | ✅ Complete |
+| **5** | Fault streamer (fault_streamer.py) — real dataset rows, diverse cycle, 4s interval | ✅ Complete |
 | **6** | Benchmark validation — 4 ISRO scenarios, lead-time measurement | ✅ Complete |
+
+---
+
+## Dashboard Features (v5.0)
+
+The NOC dashboard (`http://localhost:8080`) is a single-page application with a collapsible left sidebar:
+
+| Panel | Description |
+|---|---|
+| **Live Network** | MPLS topology SVG with animated red dashed links for active faults. pe1↔p1 highlighted whenever any non-Healthy ACP is active — state-driven, no flicker. Recent alerts alongside topology. |
+| **Alert Feed** | Full scrollable history of every ACP: fault class, severity, confidence, TTF, execution mode, rationale. Click any alert to load explanation in the Copilot panel. |
+| **NLQ Copilot** | Natural-language interface to Mistral 7B (offline). Ask free-form questions; the RAG pipeline retrieves runbook context from ChromaDB before generating. Graceful offline fallback if Ollama is unavailable. |
+| **Time-Travel** | Slider scrubs backward through every ACP snapshot captured since the dashboard started. Left side re-renders the topology at that historical state; right side shows the ACP event details (fault class, severity, conf, TTF, rationale, degraded links). |
+| **Autonomy Matrix** | Live editor for the operator autonomy policy. Editable rows: `REROUTE_BRANCH`, `QOS_SHAPE_QUEUE`. Locked rows (grey lock icon): `CORE_PATH_FAILOVER`, `NODE_ISOLATION`, `NO_ACTION`. Changes persisted to `phase3-models/policy_overrides.json` and applied to the running corroborator immediately. |
+
+### Autonomy Policy Matrix
+
+The matrix controls when the Edge Policy Engine may act autonomously vs. surface a recommendation:
+
+| Action Class | Default Min Confidence | Default Mode | Editable |
+|---|---|---|---|
+| `REROUTE_BRANCH` | 80% | AUTO_EXECUTE | ✅ |
+| `QOS_SHAPE_QUEUE` | 75% | AUTO_EXECUTE | ✅ |
+| `CORE_PATH_FAILOVER` | 90% | RECOMMEND_ONLY | 🔒 locked |
+| `NODE_ISOLATION` | 99% | RECOMMEND_ONLY | 🔒 locked |
+| `NO_ACTION` | 100% | — | 🔒 locked |
+
+Safety floors enforced in code regardless of operator settings: model disagreement always downgrades to `RECOMMEND_ONLY`; hub/DC-scope actions are never auto-executed.
+
+### Time-Travel Topology Playback
+
+Every ACP that arrives (via WebSocket or poll) is captured as a topology snapshot in the browser's in-memory history buffer. The time-travel slider indexes this buffer. Dragging left replays older states — the topology re-renders showing which links were degraded at that moment. Clicking **▶ Live** returns to the latest state.
 
 ---
 
@@ -267,7 +303,11 @@ air-gapped-mpls-copilot/
 │       └── congestion_saturation.md  # Rate limiting + QoS runbook
 │
 ├── phase5-dashboard/
-│   └── app.py                 # FastAPI NOC dashboard (inline HTML, 8 endpoints, WebSocket)
+│   └── app.py                 # FastAPI NOC dashboard v5.0 — sidebar SPA, 10 endpoints, WebSocket
+│                              #   GET  /api/policy    — autonomy matrix (ACTION_POLICY + overrides)
+│                              #   PUT  /api/policy    — operator live-edit (locked: CORE/NODE/NONE)
+│                              #   GET  /api/acps      — ACP history from acp_logs/ (full JSON)
+│                              #   WS   /ws/alerts     — live ACP stream (top_features included)
 │
 └── docs/
     ├── phase1-simulation-doc/

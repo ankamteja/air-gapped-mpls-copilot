@@ -41,3 +41,6 @@ grafana-data/
 
 # Fault injection logs (generated at runtime)
 faults_log.csv
+
+# Operator-edited autonomy policy overrides (runtime, not source)
+phase3-models/policy_overrides.json
