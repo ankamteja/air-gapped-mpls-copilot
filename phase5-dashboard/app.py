@@ -823,6 +823,7 @@ function connectWS() {
 loadHistory();
 connectWS();
 setInterval(pollAlerts, 4000);
+loadMatrix();  // Pre-load policy so the matrix is ready before user navigates to it
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NLQ Copilot
@@ -1011,14 +1012,17 @@ const LOCKED_ACTIONS = new Set(['CORE_PATH_FAILOVER', 'NODE_ISOLATION', 'NO_ACTI
 let currentPolicy = {};
 
 async function loadMatrix() {
+  const wrap = document.getElementById('matrix-table-wrap');
+  if (wrap) wrap.innerHTML = '<div style="color:#484f58;padding:8px">Loading policy…</div>';
   try {
-    document.getElementById('matrix-table-wrap').innerHTML = '<div style="color:#484f58;padding:8px">Loading policy…</div>';
     const r = await fetch('/api/policy');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     currentPolicy = await r.json();
     renderMatrix(currentPolicy);
   } catch(e) {
-    document.getElementById('matrix-table-wrap').innerHTML =
-      '<div style="color:#f85149">Failed to load policy: ' + e + '</div>';
+    console.error('[Aether] loadMatrix failed:', e);
+    const el = document.getElementById('matrix-table-wrap');
+    if (el) el.innerHTML = '<div style="color:#f85149;padding:8px">⚠ Failed to load policy: ' + e.message + '<br><button onclick="loadMatrix()" style="margin-top:8px;padding:4px 10px;background:#238636;color:white;border:none;border-radius:4px;cursor:pointer">Retry</button></div>';
   }
 }
 
