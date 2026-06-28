@@ -93,30 +93,31 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:14px;display:flex;flex-direction:column}
+body{background:#0d1117;color:#cdd3de;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;font-size:13px;display:flex;flex-direction:column}
 /* ── Header ── */
 #app-header{background:#161b27;border-bottom:1px solid #30363d;padding:0 16px;display:flex;align-items:center;gap:14px;flex-shrink:0;height:48px;z-index:10}
 #hamburger{background:none;border:none;color:#58a6ff;font-size:20px;cursor:pointer;padding:4px 6px;border-radius:4px;line-height:1;flex-shrink:0}
 #hamburger:hover{background:#1c2230}
-#app-title{color:#58a6ff;font-size:15px;letter-spacing:1px;white-space:nowrap}
-.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;white-space:nowrap}
+#app-title{color:#e6edf3;font-size:14px;font-weight:600;letter-spacing:0;white-space:nowrap}
+.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;white-space:nowrap;letter-spacing:0.2px}
 .badge-green{background:#1a3a2a;color:#3fb950}
 .badge-red{background:#3a1a1a;color:#f85149}
 .badge-yellow{background:#3a2e1a;color:#e3b341}
 .badge-blue{background:#1a2540;color:#58a6ff}
 #header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-#clock{color:#484f58;font-size:11px}
+#clock{color:#484f58;font-size:11px;font-family:'Consolas','Courier New',monospace}
 /* ── App body ── */
 #app-body{display:flex;flex:1;overflow:hidden}
 /* ── Sidebar ── */
 #sidebar{width:220px;min-width:220px;background:#0d1117;border-right:1px solid #30363d;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
 #sidebar.collapsed{width:48px;min-width:48px}
-.sidebar-section{padding:10px 14px 2px;color:#484f58;font-size:10px;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .1s}
+.sidebar-section{padding:14px 14px 4px;color:#545f75;font-size:10px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .1s}
 #sidebar.collapsed .sidebar-section{opacity:0;height:0;padding:0}
-.nav-item{padding:9px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;color:#8b949e;border-left:3px solid transparent;transition:color .1s,background .1s,border-color .1s;white-space:nowrap;user-select:none}
-.nav-item:hover{background:#161b27;color:#c9d1d9}
-.nav-item.active{color:#58a6ff;border-left-color:#58a6ff;background:#161b27}
-.nav-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.nav-item{padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;color:#8b96a8;border-left:2px solid transparent;transition:color .1s,background .1s,border-color .1s;white-space:nowrap;user-select:none}
+.nav-item:hover{background:#161a22;color:#cdd3de}
+.nav-item.active{color:#5196e8;border-left-color:#5196e8;background:#161a22}
+.nav-icon{flex-shrink:0;width:18px;height:18px;display:flex;align-items:center;justify-content:center;opacity:0.8}
+.nav-item.active .nav-icon{opacity:1}
 .nav-label{font-size:13px;overflow:hidden;opacity:1;transition:opacity .15s}
 #sidebar.collapsed .nav-label{opacity:0;width:0;overflow:hidden}
 /* sidebar footer */
@@ -133,7 +134,7 @@ body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monos
 .col-40{flex:0 0 40%;overflow:hidden;display:flex;flex-direction:column}
 /* ── Panels ── */
 .panel{background:#161b27;border:1px solid #30363d;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0}
-.panel-header{background:#1c2230;padding:8px 14px;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.panel-header{background:#1c2230;padding:9px 14px;border-bottom:1px solid #30363d;font-size:12px;font-weight:500;color:#8b949e;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
 .panel-body{flex:1;overflow-y:auto;padding:14px;min-height:0}
 .panel-body-nopad{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 /* ── Alerts ── */
@@ -144,7 +145,7 @@ body{background:#0a0e1a;color:#c9d1d9;font-family:'Consolas','Courier New',monos
 .alert-MEDIUM{border-color:#58a6ff;background:#10161e}
 .alert-LOW{border-color:#3fb950;background:#101e12}
 .alert-title{color:#e6edf3;font-weight:bold;margin-bottom:3px}
-.alert-meta{color:#8b949e;font-size:11px}
+.alert-meta{color:#8b949e;font-size:11px;font-family:'Consolas','Courier New',monospace}
 .alert-rationale{margin-top:4px;color:#6e7681;font-size:11px}
 .severity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 .dot-CRITICAL{background:#f85149}
@@ -203,10 +204,10 @@ svg.topo-svg{width:100%;height:100%}
 .safety-notice{background:#1c2230;border:1px solid #30363d;border-radius:4px;padding:8px 12px;font-size:11px;color:#8b949e;margin-bottom:14px}
 .safety-notice span{color:#e3b341}
 /* ── NLQ ── */
-#nlq-input{width:calc(100% - 70px);background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;border-radius:4px;font-family:inherit;font-size:13px}
-#nlq-btn{background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px}
+#nlq-input{width:calc(100% - 70px);background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:6px 10px;border-radius:4px;font-family:'Consolas','Courier New',monospace;font-size:13px}
+#nlq-btn{background:#238636;color:white;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500}
 #nlq-btn:hover{background:#2ea043}
-#nlq-output{padding:10px;background:#0d1117;border-radius:4px;margin-top:8px;min-height:80px;white-space:pre-wrap;color:#c9d1d9;font-size:12px;line-height:1.6}
+#nlq-output{padding:12px;background:#0d1117;border-radius:4px;margin-top:8px;min-height:80px;white-space:pre-wrap;color:#c9d1d9;font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:1.65}
 .quick-btn{background:#1c2230;color:#58a6ff;border:1px solid #30363d;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit}
 .quick-btn:hover{background:#21262d}
 /* ── Stat rows ── */
@@ -223,7 +224,7 @@ svg.topo-svg{width:100%;height:100%}
 #modal-body{flex:1;overflow-y:auto;padding:18px}
 #modal-footer{padding:12px 18px;border-top:1px solid #30363d;display:flex;gap:8px;flex-shrink:0;background:#0d1117}
 .q-section{margin-bottom:14px;padding:12px 14px;background:#161b27;border-radius:6px;border-left:3px solid #30363d}
-.q-section .q-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8b949e;margin-bottom:6px}
+.q-section .q-label{font-size:11px;font-weight:600;color:#6b788e;margin-bottom:6px}
 .q-section .q-text{color:#c9d1d9;line-height:1.65;font-size:12px;white-space:pre-wrap}
 .pending-action-box{background:#1c2118;border:1px solid #2d3a1a;border-left:3px solid #e3b341;border-radius:5px;padding:12px 14px;margin-bottom:16px}
 .approve-btn{flex:1;background:#238636;color:white;border:none;padding:10px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:bold}
@@ -247,8 +248,8 @@ svg.topo-svg{width:100%;height:100%}
 <!-- ── Header ─────────────────────────────────────────────────────────── -->
 <div id="app-header">
   <button id="hamburger" onclick="toggleSidebar()" title="Toggle menu">&#9776;</button>
-  <span id="app-title">&#11041; PROJECT AETHER &mdash; NOC COPILOT</span>
-  <span class="badge badge-green" id="status-badge">ONLINE</span>
+  <span id="app-title">Aether <span style="color:#545f75;font-weight:400;font-size:12px">NOC Dashboard</span></span>
+  <span class="badge badge-green" id="status-badge">Online</span>
   <span class="badge" id="compliance-badge">CHECKING&hellip;</span>
   <div id="header-right">
     <span class="badge badge-blue" id="alert-count-badge">0 alerts</span>
@@ -264,27 +265,27 @@ svg.topo-svg{width:100%;height:100%}
     <div class="sidebar-section">Views</div>
 
     <div class="nav-item active" data-nav="network" onclick="showPanel('network')">
-      <span class="nav-icon">&#128302;</span>
-      <span class="nav-label">Live Network</span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="4" r="1.8" fill="currentColor" stroke="none"/><circle cx="2.5" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="13.5" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="8" y1="5.8" x2="3.5" y2="11.2"/><line x1="8" y1="5.8" x2="12.5" y2="11.2"/><line x1="4.3" y1="13" x2="11.7" y2="13"/></svg></span>
+      <span class="nav-label">Network</span>
     </div>
     <div class="nav-item" data-nav="alerts" onclick="showPanel('alerts')">
-      <span class="nav-icon">&#128276;</span>
-      <span class="nav-label">Alert Feed</span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2a5 5 0 0 0-5 5v3.5L1.5 13h13L13 10.5V7a5 5 0 0 0-5-5z"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0"/></svg></span>
+      <span class="nav-label">Alerts</span>
     </div>
     <div class="nav-item" data-nav="copilot" onclick="showPanel('copilot')">
-      <span class="nav-icon">&#129302;</span>
-      <span class="nav-label">NLQ Copilot</span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5l-3 2.5V4a1 1 0 0 1 1-1z"/></svg></span>
+      <span class="nav-label">Ask Aether</span>
     </div>
 
     <div class="sidebar-section">Tools</div>
 
     <div class="nav-item" data-nav="timetravel" onclick="showPanel('timetravel')">
-      <span class="nav-icon">&#9197;</span>
-      <span class="nav-label">Time-Travel</span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9" cy="9" r="6"/><path d="M9 6v3l2 1.5"/><path d="M4 3l-2.5 2.5 2.5 2"/></svg></span>
+      <span class="nav-label">History</span>
     </div>
     <div class="nav-item" data-nav="matrix" onclick="showPanel('matrix')">
-      <span class="nav-icon">&#9881;</span>
-      <span class="nav-label">Autonomy Matrix</span>
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="6" x2="14" y2="6"/><line x1="2" y1="11" x2="14" y2="11"/><circle cx="6" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="11" cy="11" r="2" fill="currentColor" stroke="none"/></svg></span>
+      <span class="nav-label">Policy Matrix</span>
     </div>
 
     <div id="sidebar-footer">
@@ -308,7 +309,7 @@ svg.topo-svg{width:100%;height:100%}
 
     <!-- ── Proactive action notification banner ────────────────── -->
     <div id="action-notif">
-      <span class="notif-label">⚡ Action Required</span>
+      <span class="notif-label">Action pending:</span>
       <span class="notif-text">
         <span id="notif-action-name" style="font-weight:bold"></span> &mdash;
         <span id="notif-fault"></span>
@@ -354,7 +355,7 @@ svg.topo-svg{width:100%;height:100%}
     <div class="view split-v" id="view-alerts">
       <div class="panel" style="flex:1">
         <div class="panel-header">
-          Alert Feed &mdash; All Events
+          All Events
           <span id="full-feed-count" class="badge badge-yellow">0</span>
         </div>
         <div class="panel-body" id="full-feed"></div>
@@ -364,15 +365,15 @@ svg.topo-svg{width:100%;height:100%}
     <!-- ── VIEW: NLQ Copilot ─────────────────────────────────────── -->
     <div class="view split-v" id="view-copilot">
       <div class="panel" style="flex:1">
-        <div class="panel-header">Copilot &mdash; Natural Language Query (Mistral 7B &bull; Offline)</div>
+        <div class="panel-header">Ask Aether <span style="color:#545f75;font-weight:400;font-size:11px">— Mistral 7B offline</span></div>
         <div class="panel-body">
           <div style="display:flex;gap:6px;margin-bottom:8px">
-            <input id="nlq-input" placeholder="Ask: 'What will fail next?' / 'How do I fix BGP flap on pe1?'" onkeydown="if(event.key==='Enter')nlqSend()">
+            <input id="nlq-input" placeholder="e.g. What will fail next?  /  How do I fix BGP flap on pe1?" onkeydown="if(event.key==='Enter')nlqSend()">
             <button id="nlq-btn" onclick="nlqSend()">Ask</button>
           </div>
-          <div id="nlq-output">Type a question above or click a quick query. Powered by Mistral 7B (offline).</div>
+          <div id="nlq-output">Type a question above or use a quick query below.</div>
           <div style="margin-top:12px;border-top:1px solid #21262d;padding-top:10px">
-            <div style="color:#8b949e;font-size:11px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Quick Queries</div>
+            <div style="color:#6b788e;font-size:11px;font-weight:600;margin-bottom:6px">Quick queries</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
               <button class="quick-btn" onclick="quickQ('What is likely to fail next and when?')">What fails next?</button>
               <button class="quick-btn" onclick="quickQ('Why is risk elevated on the network?')">Why elevated?</button>
@@ -880,7 +881,7 @@ function openIncidentModal(acp) {
 
   const pendingBox = isRecommend ? `
     <div class="pending-action-box">
-      <div style="font-size:10px;color:#e3b341;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⚡ Awaiting Operator Approval</div>
+      <div style="font-size:11px;font-weight:600;color:#e3b341;margin-bottom:6px">Awaiting approval</div>
       <div style="color:#e6edf3;font-weight:bold;font-size:14px;margin-bottom:4px">${action}</div>
       <div style="color:#8b949e;font-size:11px;line-height:1.5">${(acp.rationale || '').slice(0, 250)}</div>
     </div>` : '';
