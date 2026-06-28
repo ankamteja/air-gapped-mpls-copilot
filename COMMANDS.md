@@ -1,276 +1,416 @@
-# Project Aether — Ready-to-Execute Commands
+# Project Aether — Operations & Verification Guide
 
 All commands run from the repo root: `/home/charan/air-gapped-mpls-copilot/`
 
 ---
 
-## 0. Install Dependencies
+## How to start the application
+
+Open **three separate terminals**.
+
+### Terminal 1 — NOC Dashboard
 
 ```bash
-# PyTorch with CUDA 12.8 (RTX 4060) — do this FIRST
-pip install torch --index-url https://download.pytorch.org/whl/cu128
-
-# All other dependencies
-pip install -r requirements.txt
-```
-
----
-
-## 1. Phase 1 — Deploy MPLS Lab (needs Docker + Containerlab)
-
-```bash
-# Deploy 7-node topology
-cd phase1-simulation/topology
-sudo clab deploy -t chunk3.clab.yml
-
-# Configure MPLS — OSPF, LDP, BGP VPNv4, VRFs
-sudo bash chunk3-setup.sh
-
-# Start traffic (VoIP + DB + HTTP + SSH) — runs in background
-bash traffic_generator.sh &
-
-# Inject faults continuously (30+ variants) — runs in background
-bash continuous_fault_loop.sh &
-
-# Return to repo root
-cd ../..
-```
-
----
-
-## 2. Phase 2 — Telemetry
-
-```bash
-# Start Prometheus exporter (binds port 8000)
-python3 phase2-telemetry/exporter.py &
-
-# Start Prometheus + Grafana via Docker Compose
-cd phase2-telemetry && docker compose up -d && cd ..
-# Prometheus: http://localhost:9090
-# Grafana:    http://localhost:3000  (admin / admin)
-
-# Collect labeled dataset from live lab (4 hours = 14400s)
-python3 phase3-models/data_collector.py \
-    --duration 14400 \
-    --output phase3-models/dataset_large.csv
-```
-
----
-
-## 3. Phase 3 — Dataset & Training
-
-```bash
-cd phase3-models
-
-# Option A: Generate synthetic dataset (no lab needed — 100k rows, 78MB)
-python3 generate_dataset.py
-# Output: dataset_large.csv
-
-# Option B: Generate custom size
-python3 generate_dataset.py --rows 50000 --out small.csv
-
-# Train all 3 models (Autoencoder + Classifier + TTF Regressor)
-# CUDA auto-detected, falls back to CPU
-python3 train_models.py \
-    --data dataset_large.csv \
-    --epochs 35 \
-    --seq-len 20 \
-    --batch-size 64
-
-# Sign models with Ed25519
-python3 model_integrity.py --sign
-
-# Verify signatures
-python3 model_integrity.py --verify
-
-cd ..
-```
-
----
-
-## 4. Phase 3 — Run Inference & Corroboration
-
-```bash
-cd phase3-models
-
-# Live inference demo (synthetic sliding window, generates ACPs)
-python3 inference_engine.py --demo
-
-# Dual-model corroboration demo (Scenario 1: AUTO_EXECUTE + Scenario 2: SAFETY TRIP)
-python3 aether_corroborator.py
-
-# Lead-time benchmark (100k dataset — 741/741 detected)
-python3 benchmark_harness.py --data dataset_large.csv --seq-len 20
-
-# Fault taxonomy
-python3 taxonomy.py
-
-# Air-gap compliance check
-python3 airgap_compliance.py
-
-# Operator feedback stats
-python3 feedback_cli.py --stats
-
-cd ..
-```
-
----
-
-## 5. Phase 4 — LLM Copilot Setup (one-time, needs internet)
-
-```bash
-# Full automated setup: Ollama + Mistral 7B + deps + IKB seed
-bash phase4-llm/setup_llm.sh
-
-# After setup — everything below runs 100% offline
-
-# Seed ChromaDB runbooks (idempotent)
-python3 phase4-llm/ikb_manager.py --seed
-
-# Sync ACP incident log → ChromaDB
-python3 phase4-llm/ikb_manager.py --ingest-acps
-
-# Search the knowledge base
-python3 phase4-llm/ikb_manager.py --query "BGP flap pe1 recovery"
-
-# Interactive NLQ terminal
-python3 phase4-llm/nlq_interface.py
-
-# Single-shot NLQ query
-python3 phase4-llm/nlq_interface.py --once "How do I fix packet loss on pe1?"
-```
-
----
-
-## 6. Phase 5 — NOC Dashboard
-
-```bash
-# Start the dashboard
 python3 phase5-dashboard/app.py
-# Dashboard: http://localhost:8080
+```
 
-# Check system status
+Open browser: **http://localhost:8080**
+
+Dashboard shows "● Online" in the header when Ollama is reachable, "● Offline" otherwise. Both states work — offline uses structured fallback answers.
+
+### Terminal 2 — Fault streamer (natural mode)
+
+```bash
+python3 phase3-models/fault_streamer.py
+```
+
+Generates realistic fault traffic using a state machine:
+- **Quiet**: Healthy heartbeat every 35–80s
+- **Fault burst**: 2–5 consecutive alerts of one fault type, 10–20s apart
+- **Resolve**: 1–2 Healthy events, then back to quiet
+
+Use `--mode cycle` for the old fast-rotation mode (every 4s), `--inject flap` to fire one specific fault.
+
+### Terminal 3 — Ollama LLM (for full Q1/Q2/Q3 answers)
+
+```bash
+ollama serve          # starts the Ollama server on port 11434
+ollama pull mistral:7b-instruct-q4_K_M   # only needed once (~4GB download)
+```
+
+Without Ollama running, the dashboard uses structured fallback answers (still correct, just template-based not LLM-generated).
+
+---
+
+## Feature verification checklist
+
+Each feature maps to a specific place in the UI or a terminal command. Verify each one:
+
+---
+
+### Phase 1 — 7-node MPLS topology
+
+**Where to check:** Network view (first nav item, default on load)
+
+**Verify:**
+- Topology SVG shows 7 nodes: pe1, p1, pe2, ce-hub, ce-branch1, ce-branch2, ce-dc
+- Links between them (pe1–p1–pe2 core, CE nodes hanging off PEs)
+- Link utilization labels update every 15 seconds (green/yellow/red based on %)
+
+```bash
+# Verify container topology is running
+docker ps | grep clab-aether
+# Verify FRR is running inside pe1
+docker exec clab-aether-pe1 vtysh -c 'show version'
+```
+
+**What to see:** Small utilization labels on each link (e.g., `12% · 120M`) updating in real time.
+
+---
+
+### Phase 2 — Telemetry pipeline
+
+**Where to check:** `phase2-telemetry/` directory and `/api/status` response
+
+**Verify:**
+```bash
+# Check status endpoint — shows model status, copilot availability
 curl -s http://localhost:8080/api/status | python3 -m json.tool
 
-# Get topology graph
-curl -s http://localhost:8080/api/topology | python3 -m json.tool
+# Run the telemetry exporter manually (polls containers, writes metrics)
+python3 phase2-telemetry/exporter.py --once
 
-# Get last 10 ACPs
-curl -s "http://localhost:8080/api/acps?limit=10" | python3 -m json.tool
-
-# Natural language query
-curl -s -X POST http://localhost:8080/api/nlq \
-  -H "Content-Type: application/json" \
-  -d '{"question": "How do I fix BGP flap on pe1?"}' | python3 -m json.tool
-
-# Air-gap compliance report
-curl -s http://localhost:8080/api/compliance | python3 -m json.tool
-
-# Submit operator feedback for an ACP
-curl -s -X POST http://localhost:8080/api/feedback \
-  -H "Content-Type: application/json" \
-  -d '{"acp_id": "<acp-id-here>", "feedback": "accepted"}' | python3 -m json.tool
+# Check syslog parser (parses FRR BGP/OSPF adjacency events)
+python3 phase2-telemetry/syslog_parser.py --help
 ```
 
 ---
 
-## 7. Full System (All Phases Together)
+### Phase 3 — Predictive modelling (BiLSTM + ACP + EPE)
 
-Open 3 terminals:
+**Where to check:** Alert Feed and alert details modal
 
-**Terminal 1 — Dashboard**
+**Verify the full ML pipeline:**
 ```bash
-cd /home/charan/air-gapped-mpls-copilot
-python3 phase5-dashboard/app.py
-```
+# Run inference directly — generates one ACP per fault class
+python3 phase3-models/fault_streamer.py --mode cycle --once
 
-**Terminal 2 — Inference engine (pushes live ACPs to dashboard)**
-```bash
-cd /home/charan/air-gapped-mpls-copilot/phase3-models
-python3 inference_engine.py --demo
-```
+# Check ACP files written
+ls -lt phase3-models/acp_logs/ | head -10
+cat phase3-models/acp_logs/$(ls -t phase3-models/acp_logs/ | head -1) | python3 -m json.tool
 
-**Terminal 3 — NLQ copilot**
-```bash
-cd /home/charan/air-gapped-mpls-copilot
-python3 phase4-llm/nlq_interface.py
-```
-
-Then open **http://localhost:8080** in a browser.
-
----
-
-## 8. Ollama / Mistral — Manual Control
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Start Ollama server
-ollama serve &
-
-# Pull Mistral 7B (4-bit quantized, ~4.1 GB)
-ollama pull mistral:7b-instruct-q4_K_M
-
-# List downloaded models
-ollama list
-
-# Test Mistral directly
-ollama run mistral:7b-instruct-q4_K_M "What is MPLS?"
-
-# Stop Ollama
-pkill ollama
-```
-
----
-
-## 9. Git Status & Commit
-
-```bash
-# Check what's changed
-git status && git diff --stat
-
-# Stage everything except secrets
-git add README.md requirements.txt docs/ \
-    phase3-models/acp_manager.py \
-    phase3-models/aether_corroborator.py \
-    phase3-models/generate_dataset.py \
-    phase3-models/train_models.py \
-    phase3-models/inference_engine.py \
-    phase3-models/keys/aether_model_key.pub.pem \
-    phase4-llm/ikb_manager.py phase4-llm/llm_copilot.py \
-    phase4-llm/nlq_interface.py phase4-llm/setup_llm.sh \
-    phase4-llm/runbooks/ \
-    phase5-dashboard/app.py \
-    phase1-simulation/topology/continuous_fault_loop.sh
-
-# DO NOT commit:
-#   phase3-models/keys/aether_model_key.pem  ← private key
-#   phase3-models/dataset_large.csv          ← 78MB binary
-#   phase3-models/saved/*.pt                 ← model weights
-#   phase4-llm/chroma_db/                    ← vector DB
-```
-
----
-
-## 10. Useful One-Liners
-
-```bash
-# Watch ACPs arriving in real time
-tail -f phase3-models/ikb/incidents.jsonl | python3 -m json.tool
-
-# Count ACPs by severity
-grep -o '"severity": "[^"]*"' phase3-models/ikb/incidents.jsonl | sort | uniq -c
-
-# Check GPU usage during training
-watch -n1 nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv
-
-# Kill the dashboard
-pkill -f "phase5-dashboard/app.py"
-
-# Kill all training jobs
-pkill -f "train_models.py"
-
-# Verify all model files exist and are signed
+# Verify model integrity (Ed25519 signature check)
 python3 phase3-models/model_integrity.py --verify
+
+# Run lead-time benchmark — prints detection lead time per scenario
+python3 phase3-models/benchmark_harness.py
+
+# Check EMA threshold calibration in inference engine
+python3 -c "
+import sys; sys.path.insert(0,'phase3-models')
+from inference_engine import AetherInferenceEngine
+e = AetherInferenceEngine(); e.load_models()
+print('EMA threshold:', e.ema_threshold.threshold)
+"
 ```
+
+**In the dashboard:**
+1. Go to **Alerts** view
+2. Each alert card shows: fault class, confidence %, TTF, severity badge, execution mode
+3. Alerts with `RECOMMEND_ONLY` show an orange notification banner at the top of the screen
+4. `AUTO_EXECUTE` alerts appear in the feed but do not prompt for approval (already executed)
+
+**Check the ACP schema:**
+The ACP JSON in `acp_logs/` should have:
+- `acp_id`, `timestamp`, `severity`
+- `ml_analysis.predicted_fault_class`, `ml_analysis.confidence_score`, `ml_analysis.estimated_time_to_failure_sec`
+- `top_features` (list of 5 feature names from attention heatmap)
+- `corroboration.recommended_action`, `corroboration.execution_mode`
+- `digital_twin_divergence` (float or null)
+- `service_sla_tag` (voip / database / bulk / default)
+
+---
+
+### Phase 3 — Digital twin divergence
+
+**Where to check:** ACP JSON files and the alert modal
+
+```bash
+# Verify digital twin module loads
+python3 -c "import sys; sys.path.insert(0,'phase3-models'); from digital_twin import DigitalTwin; print('OK')"
+
+# Check that recent ACPs have digital_twin_divergence field
+cat phase3-models/acp_logs/$(ls -t phase3-models/acp_logs/ | head -1) | python3 -c "
+import sys,json; d=json.load(sys.stdin)
+print('digital_twin_divergence:', d.get('digital_twin_divergence'))
+"
+```
+
+---
+
+### Phase 3 — Trend forecaster (Holt-Winters)
+
+```bash
+python3 -c "
+import sys; sys.path.insert(0,'phase3-models')
+from trend_forecaster import TrendForecaster
+fc = TrendForecaster()
+for v in [10,12,15,18,22,27]:
+    fc.update('test_channel', v)
+print('forecast:', fc.forecast('test_channel'))
+"
+```
+
+---
+
+### Phase 3 — Operator feedback loop (IKB)
+
+**Where to check:** Incident modal — Approve/Reject buttons
+
+**In the dashboard:**
+1. Click any alert card in the Alerts view
+2. Modal opens with fault details, Q1/Q2/Q3 analysis, and remediation commands
+3. For RECOMMEND_ONLY alerts, the modal shows Approve / Reject buttons at the bottom
+4. Click **Approve** → logged as `accepted` in `ikb/incidents.jsonl`, commands section highlighted
+5. Click **Reject** → logged as `rejected` (feeds false-positive rate)
+
+**Verify via CLI:**
+```bash
+# List all ACPs with feedback status
+python3 phase3-models/feedback_cli.py --list
+
+# View false-positive rates per fault class
+python3 phase3-models/feedback_cli.py --stats
+```
+
+---
+
+### Phase 3 — Model integrity check (Ed25519 signing)
+
+```bash
+# Verify all model weight files against their Ed25519 signatures
+python3 phase3-models/model_integrity.py --verify
+
+# Sign model files (done after training — private key is required)
+python3 phase3-models/model_integrity.py --sign
+```
+
+**Where to check:** `/api/status` response includes model integrity status.
+
+---
+
+### Phase 3 — Air-gap compliance report
+
+```bash
+# Run compliance check (attempts outbound to 8.8.8.8, pypi.org, etc. — all must FAIL)
+python3 phase3-models/airgap_compliance.py
+
+# Save a signed compliance report
+python3 phase3-models/airgap_compliance.py --out compliance_$(date +%Y%m%d).json
+
+# Via dashboard API
+curl -s http://localhost:8080/api/compliance | python3 -m json.tool
+```
+
+**Expected output:** All probes show `"reachable": false`. The report is Ed25519-signed.
+
+---
+
+### Phase 4 — Offline LLM (Mistral 7B + ChromaDB RAG)
+
+**Where to check:** Ask Aether panel (third nav item)
+
+**Verify Ollama is running:**
+```bash
+curl -s http://localhost:11434/api/tags | python3 -m json.tool
+```
+
+**Test NLQ via dashboard:**
+1. Click **Ask Aether** in the sidebar
+2. Type: `How do I fix a BGP flap on pe1?`
+3. Click **Ask** (or press Enter)
+4. Response should reference pe1, BGP, and remediation steps from the runbooks
+
+**Test NLQ via API:**
+```bash
+curl -s -X POST http://localhost:8080/api/nlq \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What will fail next on the pe1-p1 link?"}' | python3 -m json.tool
+```
+
+**Verify RAG / IKB:**
+```bash
+python3 -c "
+import sys; sys.path.insert(0,'phase3-models')
+from ikb_manager import query_all, format_context, seed_runbooks
+seed_runbooks()
+results = query_all('BGP flap pe1', top_k=3)
+print(format_context(results)[:500])
+"
+```
+
+---
+
+### Phase 5 — NOC Dashboard features
+
+#### Live Network view
+- **Verify:** Topology SVG renders all 7 nodes and links
+- **Verify:** Link utilization labels (green/yellow/red %) appear and update every 15s
+- **Verify:** When a fault ACP arrives, the affected links turn red
+- **Verify:** Status bar at bottom says "DEGRADED: ... affected links: ..." or "All links nominal"
+
+#### Alert Feed view
+- **Verify:** Alert cards appear within seconds of fault_streamer emitting an ACP
+- **Verify:** Each card shows fault class, confidence, TTF, severity badge, timestamp
+- **Verify:** RECOMMEND_ONLY alerts trigger an orange "Action pending" banner at the top
+- **Verify:** Clicking the banner opens the full incident modal
+
+#### Incident modal (click any alert)
+- **Verify:** Modal shows Q1 / Q2 / Q3 analysis (LLM or structured fallback)
+- **Verify:** Below Q3, a "Remediation commands" section shows node-specific CLI commands
+- **Verify:** Clicking any command copies it to clipboard (border flashes green)
+- **Verify:** For RECOMMEND_ONLY: Approve / Reject buttons appear at the bottom
+- **Verify:** Clicking Approve logs the decision and highlights the command section (does NOT auto-close)
+- **Verify:** Clicking Reject closes the modal
+
+#### Ask Aether (NLQ) view
+- **Verify:** Text input accepts questions, Enter key submits
+- **Verify:** Quick query buttons pre-fill the input
+- **Verify:** Response appears (LLM or RAG fallback)
+
+#### History (Time-Travel) view
+- **Verify:** Topology snapshot list shows past ACPs
+- **Verify:** Clicking a snapshot renders the topology state at that moment
+- **Verify:** Fault class and timestamp shown below the topology
+
+#### Policy Matrix view
+- **Verify:** Table shows all 5 action classes with min_conf and auto_execute values
+- **Verify:** REROUTE_BRANCH and QOS_SHAPE_QUEUE rows have editable inputs
+- **Verify:** CORE_PATH_FAILOVER and NODE_ISOLATION are locked (greyed out, cannot be set to auto)
+- **Verify:** Changing a value and clicking Save updates the policy (persisted to `policy_overrides.json`)
+
+---
+
+### Phase 6 — Scenario validation
+
+Run the four scenarios from the problem statement:
+
+**Scenario 1 — Gradual link degradation:**
+```bash
+# Add escalating latency on pe1 (run these 30s apart to simulate gradual degradation)
+docker exec clab-aether-pe1 tc qdisc add dev eth0 root netem delay 50ms
+sleep 30
+docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 150ms
+sleep 30
+docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 400ms
+# Observe: fault_streamer should detect LATENCY_DRIFT, then escalate to CRITICAL
+
+# Measure prediction lead time
+python3 phase3-models/benchmark_harness.py
+```
+
+**Scenario 2 — BGP route flap:**
+```bash
+python3 phase3-models/fault_streamer.py --inject flap
+# Observe: CORE_PATH_FAILOVER RECOMMEND_ONLY alert appears in dashboard
+# Click alert → Q1/Q2/Q3 + remediation commands for pe1 appear
+```
+
+**Scenario 3 — Telemetry collector failure:**
+```bash
+# Kill the fault streamer (simulates telemetry collection failure)
+pkill -f fault_streamer.py
+# Observe: dashboard still shows last known topology state
+# Restart:
+python3 phase3-models/fault_streamer.py &
+```
+
+**Scenario 4 — Controller misconfiguration (policy drift):**
+```bash
+# Simulate a misconfigured low confidence threshold
+curl -s -X PUT http://localhost:8080/api/policy \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"REROUTE_BRANCH","field":"min_conf","value":0.30}'
+# Observe: more alerts will fire as auto-execute (lower gate)
+# Restore:
+curl -s -X PUT http://localhost:8080/api/policy \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"REROUTE_BRANCH","field":"min_conf","value":0.82}'
+```
+
+---
+
+## Useful diagnostic commands
+
+```bash
+# Check dashboard is running
+curl -s http://localhost:8080/api/status
+
+# Count ACPs in acp_logs/
+ls phase3-models/acp_logs/ | wc -l
+
+# View 5 most recent ACPs (compact)
+ls -t phase3-models/acp_logs/ | head -5 | while read f; do
+  python3 -c "import json; d=json.load(open('phase3-models/acp_logs/$f'))
+print(d['acp_id'][:8], d['severity'], d['ml_analysis']['predicted_fault_class'], d['corroboration']['recommended_action'])"
+done
+
+# View IKB incident log
+cat phase3-models/ikb/incidents.jsonl | tail -5 | python3 -c "
+import sys,json
+for line in sys.stdin:
+    d=json.loads(line)
+    print(d.get('acp_id','?')[:8], d.get('severity','?'), d.get('operator_feedback','pending'))"
+
+# Restart dashboard (kills old process first)
+pkill -f "phase5-dashboard/app.py" 2>/dev/null; sleep 1
+python3 phase5-dashboard/app.py &
+
+# Check what port 8080 is doing
+lsof -i :8080
+
+# Check Ollama model is loaded
+curl -s http://localhost:11434/api/tags | python3 -c "
+import sys,json; tags=json.load(sys.stdin)
+for m in tags.get('models',[]): print(m['name'])"
+```
+
+---
+
+## What is and isn't implemented
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| 7-node MPLS Containerlab topology | ✅ | `phase1-simulation/topology/` |
+| Custom Prometheus telemetry exporter | ✅ | `phase2-telemetry/exporter.py` |
+| FRR syslog parser (BGP/OSPF events) | ✅ | `phase2-telemetry/syslog_parser.py` |
+| BiLSTM fault classifier (5 classes) | ✅ | `phase3-models/predictive_engine.py` |
+| Autoencoder anomaly detector | ✅ | `phase3-models/predictive_engine.py` |
+| Attention heatmap → top_features | ✅ | `phase3-models/predictive_engine.py` |
+| EMA self-calibrating threshold | ✅ | `phase3-models/inference_engine.py` → `EMAThreshold` |
+| TTF regressor | ✅ | `phase3-models/predictive_engine.py` |
+| Holt-Winters trend forecaster | ✅ | `phase3-models/trend_forecaster.py` |
+| Predictive digital twin | ✅ | `phase3-models/digital_twin.py` |
+| ACP schema with all v4 fields | ✅ | `phase3-models/acp_manager.py` |
+| NetworkX graph corroboration | ✅ | `phase3-models/graph_model.py` |
+| Per-service SLA tags | ✅ | `phase3-models/taxonomy.py` |
+| Edge Policy Engine (EPE) | ✅ | `phase3-models/inference_engine.py` |
+| Operator-configurable autonomy matrix | ✅ | Dashboard Policy Matrix view |
+| Ed25519 model integrity signing | ✅ | `phase3-models/model_integrity.py` |
+| Air-gap compliance report (signed) | ✅ | `phase3-models/airgap_compliance.py` |
+| Lead-time benchmark harness | ✅ | `phase3-models/benchmark_harness.py` |
+| Operator feedback CLI | ✅ | `phase3-models/feedback_cli.py` |
+| IKB auto-logging (every ACP) | ✅ | `phase3-models/inference_engine.py` → `log_acp()` |
+| Ollama + Mistral 7B (offline LLM) | ✅ | `phase4-llm/llm_copilot.py` |
+| ChromaDB RAG over runbooks + ACPs | ✅ | `phase3-models/ikb_manager.py` |
+| Q1/Q2/Q3 structured incident answers | ✅ | `/api/explain/{acp_id}` |
+| NLQ natural language interface | ✅ | Dashboard Ask Aether view |
+| FastAPI NOC Dashboard v5.0 | ✅ | `phase5-dashboard/app.py` |
+| WebSocket live alert feed | ✅ | `/ws/alerts` |
+| Time-Travel topology playback | ✅ | Dashboard History view |
+| Live link utilization overlay | ✅ | `/api/metrics/live`, 15s polling |
+| Remediation CLI commands in modal | ✅ | `/api/explain/{acp_id}` → `remediation` field |
+| Natural fault timing (state machine) | ✅ | `fault_streamer.py --mode natural` |
+| Data-plane links on containers | ❌ | eth1/eth2 veth pairs not created — only eth0 (management) works |
+| Prophet forecaster (seasonality) | ⚠️ | Code exists in trend_forecaster.py but needs hours of cyclical history to activate |
+| Real router API execution | ⚠️ | Remediation commands shown to operator but not auto-applied (air-gapped safety) |

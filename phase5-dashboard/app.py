@@ -82,6 +82,131 @@ def _load_policy_overrides() -> dict:
     return {}
 
 
+# ── Remediation step library ──────────────────────────────────────────────────
+# Commands use Containerlab convention: docker exec clab-aether-{node} {cmd}
+# {node} and {node_ip} are substituted at request time from the ACP's top_features.
+
+_REMEDIATION_STEPS = {
+    "REROUTE_BRANCH": {
+        "title": "Reroute traffic around the degraded branch link",
+        "steps": [
+            ("Review current routing table before any change",
+             "docker exec clab-aether-{node} vtysh -c 'show ip route'"),
+            ("Raise OSPF cost on degraded interface — traffic shifts immediately",
+             "docker exec clab-aether-{node} vtysh -c 'conf t' -c 'int eth0' -c 'ip ospf cost 200' -c 'end' -c 'write'"),
+            ("Soft-reset BGP to pull fresh routes via backup path",
+             "docker exec clab-aether-{node} vtysh -c 'clear bgp * soft'"),
+            ("Confirm traffic rerouted — BGP best-path should change",
+             "docker exec clab-aether-{node} vtysh -c 'show bgp ipv4 unicast' | head -30"),
+            ("Monitor — confirm error counters stop rising",
+             "docker exec clab-aether-{node} vtysh -c 'show interface eth0' | grep -E 'drops|errors|resets'"),
+        ],
+    },
+    "QOS_SHAPE_QUEUE": {
+        "title": "Shape non-critical queues to relieve congestion",
+        "steps": [
+            ("Check current queue depth and drop statistics",
+             "docker exec clab-aether-{node} tc -s qdisc show dev eth0"),
+            ("Install HTB root qdisc (safe to run again — second run is a no-op)",
+             "docker exec clab-aether-{node} tc qdisc add dev eth0 root handle 1: htb default 30 2>/dev/null || true"),
+            ("Reserve 800 Mbps for critical traffic (VoIP / BGP control plane)",
+             "docker exec clab-aether-{node} tc class add dev eth0 parent 1: classid 1:10 htb rate 800mbit ceil 1000mbit"),
+            ("Cap best-effort bulk traffic at 200 Mbps",
+             "docker exec clab-aether-{node} tc class add dev eth0 parent 1: classid 1:30 htb rate 200mbit ceil 400mbit"),
+            ("Verify discipline is active and rates are being enforced",
+             "docker exec clab-aether-{node} tc -s class show dev eth0"),
+        ],
+    },
+    "CORE_PATH_FAILOVER": {
+        "title": "Fail primary core link to backup path — APPROVE REQUIRED",
+        "steps": [
+            ("Read BGP neighbor state before making any change",
+             "docker exec clab-aether-{node} vtysh -c 'show bgp summary'"),
+            ("Soft-reset all BGP sessions — flushes stale routes, non-disruptive",
+             "docker exec clab-aether-{node} vtysh -c 'clear bgp * soft'"),
+            ("Poison the flapping link: raise OSPF cost to max (65535)",
+             "docker exec clab-aether-{node} vtysh -c 'conf t' -c 'int eth0' -c 'ip ospf cost 65535' -c 'end' -c 'write'"),
+            ("Shut down the flapping BGP neighbor on pe1 (primary core path)",
+             "docker exec clab-aether-pe1 vtysh -c 'conf t' -c 'router bgp 65001' -c 'neighbor 192.168.12.2 shutdown' -c 'end' -c 'write'"),
+            ("Verify traffic has shifted to pe2 backup path",
+             "docker exec clab-aether-pe2 vtysh -c 'show bgp summary' && docker exec clab-aether-{node} vtysh -c 'show ip route'"),
+            ("Confirm SLA recovery — drops and errors should trend to zero",
+             "docker exec clab-aether-{node} vtysh -c 'show interface eth0' | grep -E 'drops|errors|resets'"),
+        ],
+    },
+    "NODE_ISOLATION": {
+        "title": "Isolate suspected compromised node — APPROVE REQUIRED",
+        "steps": [
+            ("Confirm the suspected node before acting — check for anomalous routes",
+             "docker exec clab-aether-{node} vtysh -c 'show bgp summary' && docker exec clab-aether-{node} vtysh -c 'show ip route'"),
+            ("Drop all forwarded traffic from and to the suspect node",
+             "iptables -I FORWARD -s {node_ip} -j DROP && iptables -I FORWARD -d {node_ip} -j DROP"),
+            ("Shut BGP neighbor on all PE routers that peer with this node",
+             "docker exec clab-aether-pe1 vtysh -c 'conf t' -c 'router bgp 65001' -c 'neighbor {node_ip} shutdown' -c 'end'"),
+            ("Mark OSPF interface passive — stops routing updates immediately",
+             "docker exec clab-aether-{node} vtysh -c 'conf t' -c 'router ospf' -c 'passive-interface eth0' -c 'end'"),
+            ("Capture traffic snapshot for forensics (runs in background, 50k pkts)",
+             "docker exec clab-aether-{node} tcpdump -i eth0 -w /tmp/isolation_$(date +%s).pcap -c 50000 &"),
+        ],
+    },
+    "NO_ACTION": {
+        "title": "System nominal — no corrective action required",
+        "steps": [
+            ("Confirm all nodes are healthy",
+             "docker exec clab-aether-pe1 vtysh -c 'show bgp summary' && docker exec clab-aether-pe2 vtysh -c 'show bgp summary'"),
+            ("Check recent ACP history and false-positive rate",
+             "python3 phase3-models/feedback_cli.py --stats"),
+        ],
+    },
+}
+
+_NODE_IPS = {
+    "pe1": "172.20.20.2", "pe2": "172.20.20.3", "p1": "172.20.20.4",
+    "ce-hub": "172.20.20.7", "ce-branch1": "172.20.20.5",
+    "ce-branch2": "172.20.20.6", "ce-dc": "172.20.20.8",
+}
+
+
+def _build_remediation(action: str, top_features: list) -> dict:
+    """Return node-specific remediation steps derived from the ACP's top_features."""
+    entry = _REMEDIATION_STEPS.get(action, _REMEDIATION_STEPS["NO_ACTION"])
+
+    # Extract primary affected node by counting feature prefixes
+    node   = "pe1"
+    counts = {p: 0 for p in _NODE_IPS}
+    for feat in top_features:
+        for pfx in _NODE_IPS:
+            key = pfx.replace("-", "_")
+            if feat.startswith(key + "_") or feat.startswith(pfx + "_"):
+                counts[pfx] += 1
+    if any(counts.values()):
+        node = max(counts, key=counts.get)
+
+    node_ip = _NODE_IPS.get(node, "172.20.20.2")
+
+    steps = [
+        {"description": desc,
+         "command": cmd.replace("{node}", node).replace("{node_ip}", node_ip).replace("{iface}", "eth0")}
+        for desc, cmd in entry["steps"]
+    ]
+
+    return {
+        "action":        action,
+        "title":         entry["title"],
+        "affected_node": node,
+        "node_ip":       node_ip,
+        "steps":         steps,
+    }
+
+
+# Simulated live traffic state (random walk per link, updated on each /api/metrics/live call)
+import random as _random
+_link_util: dict[str, float] = {
+    "pe1→p1": 14.0, "p1→pe2": 11.0, "pe1→ce-hub": 7.0,
+    "pe2→ce-branch1": 5.0, "pe2→ce-branch2": 8.0, "pe1→ce-dc": 17.0,
+}
+
+
 # ── HTML Dashboard ────────────────────────────────────────────────────────────
 
 DASHBOARD_HTML = """<!DOCTYPE html>
@@ -587,9 +712,56 @@ function drawTopoOnSvg(svgId, degradedLinks) {
 }
 
 let currentDegradedLinks = new Set();
+let _liveMetrics = {};
 
-function drawTopo() { drawTopoOnSvg('topo-canvas', currentDegradedLinks); }
+function drawTopo() {
+  drawTopoOnSvg('topo-canvas', currentDegradedLinks);
+  _overlayMetrics('topo-canvas', _liveMetrics);
+}
 drawTopo();
+
+// ── Live traffic metrics overlay ─────────────────────────────────────────────
+function _overlayMetrics(svgId, links) {
+  const svg = document.getElementById(svgId);
+  if (!svg || !links || !Object.keys(links).length) return;
+  svg.querySelectorAll('.metric-label').forEach(el => el.remove());
+  const defs = {
+    'pe1→p1':          ['pe1','p1'],
+    'p1→pe2':          ['p1','pe2'],
+    'pe1→ce-hub':      ['pe1','ce-hub'],
+    'pe2→ce-branch1':  ['pe2','ce-branch1'],
+    'pe2→ce-branch2':  ['pe2','ce-branch2'],
+    'pe1→ce-dc':       ['pe1','ce-dc'],
+  };
+  for (const [key, [a, b]] of Object.entries(defs)) {
+    const m = links[key];
+    if (!m || !NODES[a] || !NODES[b]) continue;
+    const mx = (NODES[a].x + NODES[b].x) / 2;
+    const my = (NODES[a].y + NODES[b].y) / 2;
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', mx); t.setAttribute('y', my - 5);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('class', 'metric-label');
+    t.setAttribute('fill', m.util_pct > 70 ? '#f85149' : m.util_pct > 40 ? '#e3b341' : '#3fb950');
+    t.setAttribute('font-size', '9');
+    t.setAttribute('font-family', "'Consolas','Courier New',monospace");
+    t.textContent = m.util_pct + '% · ' + m.mbps + 'M';
+    svg.appendChild(t);
+  }
+}
+
+async function pollLiveMetrics() {
+  try {
+    const r = await fetch('/api/metrics/live');
+    const d = await r.json();
+    _liveMetrics = d.links || {};
+    _overlayMetrics('topo-canvas', _liveMetrics);
+    // Also update time-travel canvas if it is the current topology snapshot
+    _overlayMetrics('tt-canvas', _liveMetrics);
+  } catch(e) {}
+}
+pollLiveMetrics();
+setInterval(pollLiveMetrics, 15000);
 
 function applyFaultToTopo(acp) {
   const newLinks = (acp.fault_class && acp.fault_class !== 'Healthy')
@@ -916,7 +1088,34 @@ async function fetchExplanation(acp_id) {
       el.innerHTML = '<div style="color:#f85149;padding:10px">' + d.error + '</div>';
       return;
     }
-    const srcTag = d.source === 'ollama' ? '🤖 Mistral 7B' : '📋 Structured fallback';
+    const srcTag = d.source === 'ollama' ? 'Mistral 7B' : 'Structured fallback';
+
+    // Build remediation commands section
+    let remHtml = '';
+    if (d.remediation && d.remediation.steps && d.remediation.steps.length) {
+      const rem = d.remediation;
+      const stepsHtml = rem.steps.map((s, i) => `
+        <div style="margin-bottom:10px">
+          <div style="font-size:11px;color:#6b788e;margin-bottom:4px">${i+1}. ${s.description}</div>
+          <code style="display:block;font-family:'Consolas','Courier New',monospace;font-size:11px;
+                       color:#a5d6ff;background:#0d1117;border:1px solid #2d3040;border-radius:3px;
+                       padding:8px 10px;cursor:pointer;word-break:break-all;white-space:pre-wrap"
+                title="Click to copy"
+                onclick="navigator.clipboard.writeText(this.textContent).then(()=>{this.style.borderColor='#2ea043';setTimeout(()=>this.style.borderColor='#2d3040',900)})">${s.command}</code>
+        </div>`).join('');
+      remHtml = `
+        <div id="remediation-section" style="margin-top:16px;border-top:1px solid #2d3040;padding-top:14px">
+          <div style="font-size:11px;font-weight:600;color:#6b788e;margin-bottom:2px">Remediation commands</div>
+          <div style="font-size:11px;color:#545f75;margin-bottom:10px">${rem.title}
+            <span style="float:right">target: <code style="color:#8b949e;font-size:11px">${rem.affected_node}</code> (${rem.node_ip})</span>
+          </div>
+          <div style="background:#0e1117;border-radius:4px;padding:12px">
+            ${stepsHtml}
+            <div style="font-size:10px;color:#484f58;margin-top:4px">Click any command to copy to clipboard</div>
+          </div>
+        </div>`;
+    }
+
     el.innerHTML = `
       <div class="q-section">
         <div class="q-label">Q1 — What is likely to fail next?</div>
@@ -930,6 +1129,7 @@ async function fetchExplanation(acp_id) {
         <div class="q-label">Q3 — Corrective action to take</div>
         <div class="q-text">${d.q3_action || '—'}</div>
       </div>
+      ${remHtml}
       <div style="margin-top:12px;padding:8px 10px;background:#161b27;border-radius:4px;font-size:10px;color:#484f58">
         ${srcTag} &bull; ${d.acp_id || acp_id}
       </div>`;
@@ -947,17 +1147,23 @@ function closeModal() {
 async function approveCurrentAcp() {
   if (!currentModalAcp) return;
   const btn = document.getElementById('modal-approve-btn');
-  btn.disabled = true; btn.textContent = 'Executing…';
+  btn.disabled = true; btn.textContent = 'Logging…';
   try {
-    const r = await fetch('/api/feedback', {
+    await fetch('/api/feedback', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({acp_id: currentModalAcp.acp_id, feedback: 'accepted'}),
     });
-    const d = await r.json();
-    btn.textContent = '✓ Approved — Action Queued';
+    btn.textContent = '✓ Logged — run commands below';
     btn.style.background = '#0f3a1a';
-    setTimeout(() => closeModal(), 2200);
+    // Highlight the remediation section and scroll to it
+    const rem = document.getElementById('remediation-section');
+    if (rem) {
+      rem.style.outline = '1px solid #2ea043';
+      rem.style.borderRadius = '4px';
+      rem.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+    // Do NOT auto-close — operator must see the commands and execute them manually
   } catch(e) {
     btn.textContent = '✓ Execute: ' + (currentModalAcp.action || '?');
     btn.disabled = false;
@@ -1337,7 +1543,26 @@ async def explain_acp(acp_id: str):
         result = await asyncio.get_event_loop().run_in_executor(
             None, copilot.explain, acp_obj
         )
+
+    # Attach node-specific remediation commands
+    action       = acp_entry.get("corroboration", {}).get("recommended_action", "NO_ACTION")
+    top_features = acp_entry.get("top_features", [])
+    result["remediation"] = _build_remediation(action, top_features)
+
     return result
+
+
+@app.get("/api/metrics/live")
+async def live_metrics():
+    """Simulated real-time link utilization for topology overlays. Updates via random walk."""
+    result = {}
+    for link in list(_link_util):
+        _link_util[link] = max(1.0, min(92.0, _link_util[link] + _random.gauss(0, 1.8)))
+        result[link] = {
+            "util_pct": round(_link_util[link], 1),
+            "mbps":     round(_link_util[link] * 10, 1),
+        }
+    return {"links": result, "ts": datetime.utcnow().isoformat()}
 
 
 # ── Feedback ─────────────────────────────────────────────────────────────────
