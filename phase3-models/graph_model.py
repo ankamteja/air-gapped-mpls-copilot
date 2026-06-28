@@ -200,6 +200,53 @@ class ClonalGraphEngine:
         score = sla_violations + (total_delay / 1000.0)
         return score, saturated_links, path_delays
 
+    def get_tunnel_health(self) -> list[dict]:
+        """
+        Returns per-LSP tunnel health statistics derived from graph link state.
+        Each record describes an MPLS LSP and its current health metrics.
+        Used as synthetic tunnel telemetry when actual MPLS OAM is unavailable.
+        """
+        import random, math
+        rng = random.Random(42 + int(sum(
+            self.base_graph[u][v].get("delay", 0)
+            for u, v in self.base_graph.edges()
+        )))
+        tunnels = [
+            {"lsp_id": "LSP-PE1-PE2-PRIMARY",   "src": "pe1", "dst": "pe2", "transit": "p1",    "service": "voip",    "label_stack": [3001, 3002]},
+            {"lsp_id": "LSP-PE2-PE1-PRIMARY",   "src": "pe2", "dst": "pe1", "transit": "p1",    "service": "voip",    "label_stack": [3002, 3001]},
+            {"lsp_id": "LSP-PE1-PE2-DB",        "src": "pe1", "dst": "pe2", "transit": "p1",    "service": "database","label_stack": [3003, 3004]},
+            {"lsp_id": "LSP-PE1-PE2-BULK",      "src": "pe1", "dst": "pe2", "transit": "p1",    "service": "bulk",    "label_stack": [3005, 3006]},
+        ]
+        health_records = []
+        for t in tunnels:
+            src, dst = t["src"], t["dst"]
+            e = self.base_graph[src][t["transit"]] if self.base_graph.has_edge(src, t["transit"]) else {}
+            delay    = e.get("delay", 5)
+            capacity = e.get("capacity", 1_000_000_000)
+            loss     = e.get("loss", 0)
+
+            # Derive health score: 1.0 = perfect, 0.0 = completely degraded
+            delay_penalty = min(1.0, delay / 500.0)
+            loss_penalty  = min(1.0, loss  / 100.0)
+            health_score  = round(max(0.0, 1.0 - delay_penalty - loss_penalty * 0.5), 3)
+            state = "UP" if health_score > 0.4 else ("DEGRADED" if health_score > 0.1 else "DOWN")
+
+            health_records.append({
+                "lsp_id":       t["lsp_id"],
+                "src_node":     src,
+                "dst_node":     dst,
+                "transit":      t["transit"],
+                "service":      t["service"],
+                "label_stack":  t["label_stack"],
+                "state":        state,
+                "health_score": health_score,
+                "delay_ms":     delay,
+                "loss_pct":     loss,
+                "capacity_bps": capacity,
+                "bfd_state":    "UP" if state == "UP" else "DOWN",
+            })
+        return health_records
+
     def run_clonal_search(self, degraded_link=None):
         """
         Executes clonal state search. Runs all clones and returns the winning

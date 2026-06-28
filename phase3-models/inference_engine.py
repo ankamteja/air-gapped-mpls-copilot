@@ -319,12 +319,13 @@ class AetherInferenceEngine:
         # 6. Digital Twin Divergence (observability — does not gate corroboration)
         if self.digital_twin and self.trend_forecaster:
             try:
-                forecasts = self.trend_forecaster.forecast_all()
-                if forecasts:
-                    latest_metrics = {col: float(list(self.sliding_window)[-1][i])
-                                      for i, col in enumerate(self.columns)}
-                    div_result = self.digital_twin.evaluate(latest_metrics, forecasts)
-                    acp.set_digital_twin_divergence(div_result.normalized_divergence)
+                # Feed current raw metrics to the digital twin's forecaster
+                latest_metrics = {col: float(list(self.sliding_window)[-1][i])
+                                  for i, col in enumerate(self.columns)}
+                self.digital_twin.update(latest_metrics)
+                div_result = self.digital_twin.evaluate()
+                if div_result is not None:
+                    acp.set_digital_twin_divergence(div_result.divergence)
             except Exception:
                 pass  # twin never blocks inference
 

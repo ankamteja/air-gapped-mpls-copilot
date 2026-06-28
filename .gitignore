@@ -44,3 +44,6 @@ faults_log.csv
 
 # Operator-edited autonomy policy overrides (runtime, not source)
 phase3-models/policy_overrides.json
+
+# Phase 6 validation run reports (timestamped, generated at runtime)
+phase6-validation/report_*.json

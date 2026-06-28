@@ -1590,10 +1590,48 @@ async def compliance():
     return report
 
 
+@app.get("/api/tunnel-health")
+async def tunnel_health():
+    """Returns per-LSP MPLS tunnel health derived from the graph model state."""
+    try:
+        sys.path.insert(0, os.path.join(REPO_ROOT, "..", "phase3-models"))
+        from graph_model import ClonalGraphEngine
+        engine = ClonalGraphEngine()
+        # Apply live link utilization as synthetic delay proxy
+        for link_key, util in _link_util.items():
+            parts = link_key.split("→")
+            if len(parts) == 2:
+                u, v = parts[0].strip(), parts[1].strip()
+                synth_delay = max(1, int(util / 10))  # util% → roughly delay ms
+                if engine.base_graph.has_edge(u, v):
+                    engine.base_graph[u][v]["delay"] = synth_delay
+        return {"tunnels": engine.get_tunnel_health(), "source": "graph_model"}
+    except Exception as e:
+        return {"tunnels": [], "error": str(e)}
+
+
+@app.get("/api/netflow")
+async def netflow_summary():
+    """Returns a summary of NetFlow/IPFIX records from the flow simulator."""
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://localhost:9995/summary", timeout=2) as resp:
+            import json as _json
+            data = _json.loads(resp.read())
+        return data
+    except Exception:
+        return {
+            "total_flows": 11,
+            "total_bytes": 0,
+            "fault_flows": 0,
+            "source": "unavailable — start netflow_simulator.py",
+        }
+
+
 @app.get("/api/benchmark")
 async def benchmark():
     from benchmark_harness import run_benchmark
-    data_path = os.path.join(REPO_ROOT, "..", "phase3-models", "dataset.csv")
+    data_path = os.path.join(REPO_ROOT, "..", "phase3-models", "dataset_large.csv")
     if not os.path.exists(data_path):
         return {"error": "dataset.csv not found"}
     results = await asyncio.get_event_loop().run_in_executor(

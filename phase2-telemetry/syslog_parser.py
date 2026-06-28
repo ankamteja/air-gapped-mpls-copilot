@@ -24,17 +24,27 @@ from datetime import datetime, timezone
 from collections import deque
 
 # ── Patterns ─────────────────────────────────────────────────────────────────
-# FRR BGP: "2024/06/27 12:34:56 BGP: 10.0.0.2 went from Established to Idle"
+# FRR native BGP state: "BGP: 10.0.0.2 went from Established to Idle"
+# FRR native BGP state (with instance tag): "BGP: [PJCS3-VECNA] 3.3.3.3 went from Established to Idle"
 BGP_STATE_RE = re.compile(
-    r"BGP:\s+(?P<peer>[\d\.]+)\s+went from\s+(?P<from_state>\S+)\s+to\s+(?P<to_state>\S+)"
+    r"BGP:(?:\s+\[[^\]]+\])?\s+(?P<peer>[\d\.]+)\s+went from\s+(?P<from_state>\S+)\s+to\s+(?P<to_state>\S+)",
+    re.IGNORECASE,
 )
-# FRR OSPF: "2024/06/27 12:34:56 OSPF: 10.0.0.1: 0.0.0.1 State change Full -> Down"
+# Syslog-style: "frr bgpd: %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Up"
+# or rsyslog:   "bgpd[123]: %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Down"
+BGP_ADJCHANGE_RE = re.compile(
+    r"(?:bgp[^\s]*|BGP)[^\n]*?(?:ADJCHANGE|neighbor)\s+(?P<peer>[\d\.]+)\s+(?P<to_state>Up|Down|Established|Idle|Active)",
+    re.IGNORECASE,
+)
+# FRR OSPF: "OSPF: 10.0.0.1: 0.0.0.1 State change Full -> Down"
 OSPF_STATE_RE = re.compile(
-    r"OSPF:.*?(?P<neighbor>[\d\.]+)\s+State change\s+(?P<from_state>\S+)\s+->\s+(?P<to_state>\S+)"
+    r"OSPF:.*?(?P<neighbor>[\d\.]+)\s+State change\s+(?P<from_state>\S+)\s+->\s+(?P<to_state>\S+)",
+    re.IGNORECASE,
 )
-# FRR BGP notification: "BGP: %NOTIFICATION: sent to neighbor 10.0.0.2"
+# BGP NOTIFICATION message
 BGP_NOTIF_RE = re.compile(
-    r"BGP:.*?NOTIFICATION.*?neighbor\s+(?P<peer>[\d\.]+)"
+    r"(?:BGP|bgp).*?NOTIFICATION.*?neighbor\s+(?P<peer>[\d\.]+)",
+    re.IGNORECASE,
 )
 # Timestamp prefix (FRR default): "2024/06/27 12:34:56"
 TIMESTAMP_RE = re.compile(r"^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})")
@@ -47,7 +57,7 @@ EVENT_OSPF_UP   = "ospf_adjacency_up"
 EVENT_BGP_NOTIF = "bgp_notification"
 
 # States that mean the session is lost
-_BGP_DOWN_STATES  = {"idle", "active", "connect", "opensent", "openconfirm"}
+_BGP_DOWN_STATES  = {"idle", "active", "connect", "opensent", "openconfirm", "down"}  # "down" for syslog ADJCHANGE
 _OSPF_DOWN_STATES = {"down", "attempt", "init", "2-way", "exstart", "exchange", "loading"}
 
 
@@ -73,12 +83,15 @@ class SyslogParser:
 
         event = None
 
-        # BGP state change
-        m = BGP_STATE_RE.search(line)
+        # BGP state change (native FRR format OR syslog adjchange format)
+        m = BGP_STATE_RE.search(line) or BGP_ADJCHANGE_RE.search(line)
         if m:
             peer = m.group("peer")
             to_state = m.group("to_state").lower()
-            from_state = m.group("from_state").lower()
+            try:
+                from_state = m.group("from_state").lower()
+            except IndexError:
+                from_state = self._bgp_peer_states.get(peer, "unknown")
             prev = self._bgp_peer_states.get(peer, "unknown")
             self._bgp_peer_states[peer] = to_state
             if to_state.lower() in _BGP_DOWN_STATES:
@@ -88,7 +101,7 @@ class SyslogParser:
                     "timestamp": ts, "severity": "HIGH",
                     "routing_instability_score": 1.0,
                 }
-            elif to_state == "established":
+            elif to_state in ("established", "up"):
                 event = {
                     "type": EVENT_BGP_UP, "peer": peer,
                     "from_state": from_state, "to_state": to_state,

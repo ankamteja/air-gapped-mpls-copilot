@@ -96,37 +96,46 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **1** | Traffic generation (VoIP, DB, HTTP, SSH across L3VPN) | ✅ Complete |
 | **1** | Fault injection — 5 types (latency, loss, corrupt, rate, flap) via tc-netem | ✅ Complete |
 | **1** | Scenario runner (all 4 validation scenarios, timed) | ✅ Complete |
-| **2** | Custom threaded Prometheus exporter — 350+ features at 1 s | ✅ Complete |
+| **2** | Custom threaded Prometheus exporter — interface + FRR + RTT/jitter metrics | ✅ Complete |
+| **2** | RTT and jitter measurement via ICMP ping (per-link, 10-packet bursts) | ✅ Complete |
+| **2** | NetFlow/IPFIX synthetic flow simulator (`netflow_simulator.py`, port 9995) | ✅ Complete |
+| **2** | Application traffic generator — iperf3 CE-to-CE VPN flows + synthetic fallback | ✅ Complete |
+| **2** | FRR syslog parser — native BGP/OSPF + syslog ADJCHANGE format, both supported | ✅ Complete |
 | **2** | Prometheus + Grafana via Docker Compose | ✅ Complete |
 | **2** | Labeled dataset collection (fault_injector → dataset.csv) | ✅ Complete |
 | **3** | LSTM Autoencoder (unsupervised anomaly) | ✅ Complete |
-| **3** | LSTM Attention Classifier (6-class fault) | ✅ Complete |
+| **3** | LSTM Attention Classifier (5-class fault) | ✅ Complete |
 | **3** | TTF Regressor (time-to-SLA-breach) | ✅ Complete |
-| **3** | NetworkX Clonal State-Space Search | ✅ Complete |
+| **3** | NetworkX Clonal State-Space Search + tunnel health API | ✅ Complete |
 | **3** | Dual-model corroboration gate + autonomy policy matrix | ✅ Complete |
 | **3** | Anomaly Context Packet (ACP) JSON schema | ✅ Complete |
 | **3** | Fault taxonomy single source of truth (taxonomy.py) | ✅ Complete |
 | **3** | EMA self-calibrating threshold (Bollinger-band, replaces fixed 3×) | ✅ Complete |
 | **3** | Attention heatmap linear head (per-feature explainability) | ✅ Complete |
-| **3** | Digital Twin (Holt-Winters forecast vs actual graph divergence) | ✅ Complete |
+| **3** | Digital Twin (Holt-Winters forecast vs actual graph divergence) — fixed API wiring | ✅ Complete |
 | **3** | Ed25519 model signing + air-gap compliance reporter | ✅ Complete |
 | **3** | Per-service SLA YAML + graph scoring (voip / database / bulk) | ✅ Complete |
-| **3** | FRR syslog parser (BGP/OSPF adjacency events) | ✅ Complete |
-| **3** | Lead-time benchmark harness (9/9 detected, avg 343s before breach) | ✅ Complete |
+| **3** | Lead-time benchmark harness (5/5 detected, avg 503s before breach) | ✅ Complete |
 | **3** | Operator feedback CLI (accept/reject → IKB false-positive rate) | ✅ Complete |
-| **3** | Continuous fault loop (30+ variants, gradual ramp, BGP cascade) | ✅ Complete |
+| **3** | Natural fault timing state machine (QUIET→FAULT→RESOLVE) | ✅ Complete |
 | **4** | Offline LLM copilot (Ollama + Mistral 7B, graceful offline fallback) | ✅ Complete |
 | **4** | ChromaDB RAG over ACP logs + topology runbooks (ikb_manager.py) | ✅ Complete |
 | **4** | NLQ interface (intent detection, IKB retrieval, fallback answers) | ✅ Complete |
 | **4** | Runbooks: BGP flap, congestion, packet loss, topology reference | ✅ Complete |
 | **5** | FastAPI NOC dashboard (app.py — topology, alerts, NLQ, compliance) | ✅ Complete |
 | **5** | WebSocket live alert stream + 4s polling dual-path fallback | ✅ Complete |
-| **5** | Left-sidebar SPA — 5 views: Live Network, Alert Feed, NLQ, Time-Travel, Autonomy Matrix | ✅ Complete |
-| **5** | Live topology SVG — pe1↔p1 link highlighted on fault (state-based, no flicker) | ✅ Complete |
+| **5** | Left-sidebar SPA — 5 views: Live Network, Alert Feed, Ask Aether, History, Policy Matrix | ✅ Complete |
+| **5** | Live topology SVG with link utilization overlay (green/yellow/red, 15s refresh) | ✅ Complete |
 | **5** | Time-Travel Topology Playback — slider scrubs ACP snapshot history | ✅ Complete |
-| **5** | Autonomy Matrix editor — live-editable policy table with per-row PUT to `/api/policy` | ✅ Complete |
-| **5** | Fault streamer (fault_streamer.py) — real dataset rows, diverse cycle, 4s interval | ✅ Complete |
-| **6** | Benchmark validation — 4 ISRO scenarios, lead-time measurement | ✅ Complete |
+| **5** | Autonomy Matrix editor — live-editable policy table, locked rows for critical actions | ✅ Complete |
+| **5** | Remediation CLI commands in incident modal — node-specific, click-to-copy | ✅ Complete |
+| **5** | `/api/tunnel-health` — MPLS LSP health from graph model state | ✅ Complete |
+| **5** | `/api/netflow` — NetFlow flow summary bridge | ✅ Complete |
+| **6** | Scenario validation suite (`run_scenarios.py`) — all 4 PS-13 scenarios automated | ✅ Complete |
+| **6** | Scenario 1: gradual link degradation → benchmark lead-time | ✅ Complete |
+| **6** | Scenario 2: BGP route flap → MTTD measurement | ✅ Complete |
+| **6** | Scenario 3: telemetry collector failure → graceful degradation | ✅ Complete |
+| **6** | Scenario 4: controller misconfiguration → policy drift detection + restore | ✅ Complete |
 
 ---
 
@@ -264,9 +273,12 @@ air-gapped-mpls-copilot/
 │       └── continuous_fault_loop.sh # 30+ fault variants, 4-hour data collection
 │
 ├── phase2-telemetry/
-│   ├── exporter.py                  # Custom Prometheus exporter (stdlib only, 350+ metrics)
+│   ├── exporter.py                  # Custom Prometheus exporter (interface + FRR + RTT/jitter)
+│   ├── syslog_parser.py             # FRR syslog → BGP/OSPF events (native + syslog ADJCHANGE)
+│   ├── netflow_simulator.py         # Synthetic NetFlow/IPFIX simulator (port 9995, /flows /summary)
+│   ├── traffic_generator.py         # iperf3 CE-to-CE application traffic (VoIP/DB/bulk)
 │   ├── docker-compose.yml           # Prometheus + Grafana stack
-│   └── dashboards/                  # Grafana dashboard JSON exports
+│   └── grafana-provisioning/        # Grafana datasource + dashboard JSON exports
 │
 ├── phase3-models/
 │   ├── taxonomy.py            # SINGLE SOURCE OF TRUTH — 6 fault classes + action matrix
@@ -277,17 +289,19 @@ air-gapped-mpls-copilot/
 │   ├── graph_model.py         # NetworkX clonal state-space search (SLA-aware)
 │   ├── acp_manager.py         # Anomaly Context Packet schema + IKB audit log
 │   ├── aether_corroborator.py # Dual-model corroboration gate + EPE + digital twin PSF
-│   ├── inference_engine.py    # Live inference: EMA threshold, 3-model pipeline
-│   ├── digital_twin.py        # Holt-Winters forecast → graph divergence
+│   ├── inference_engine.py    # Live inference: EMA threshold, 3-model pipeline (digital twin wired)
+│   ├── digital_twin.py        # Holt-Winters forecast → graph divergence (update+evaluate API)
 │   ├── trend_forecaster.py    # EMA + Holt-Winters per-channel forecasting
+│   ├── graph_model.py         # Clonal state-space search + tunnel health API
 │   ├── model_integrity.py     # Ed25519 model signing + verification
 │   ├── airgap_compliance.py   # Network probe + signed compliance report
-│   ├── syslog_parser.py       # FRR syslog → BGP/OSPF event + instability score
-│   ├── benchmark_harness.py   # Lead-time benchmark (9/9 scenarios, avg 343s)
+│   ├── benchmark_harness.py   # Lead-time benchmark (5/5 scenarios, avg 503s before breach)
+│   ├── fault_streamer.py      # State-machine fault generator (QUIET→FAULT→RESOLVE)
 │   ├── feedback_cli.py        # Operator accept/reject ACP → IKB false-positive stats
 │   ├── dataset_large.csv      # 100k-row synthetic training dataset (78 MB)
 │   ├── saved/                 # Trained model weights + normalization params + signatures
 │   ├── keys/                  # aether_model_key.pub.pem (private key stays offline)
+│   ├── acp_logs/              # Live ACP JSON files (one per inference event)
 │   └── ikb/incidents.jsonl    # Append-only ACP audit log
 │
 ├── phase4-llm/
@@ -303,25 +317,26 @@ air-gapped-mpls-copilot/
 │       └── congestion_saturation.md  # Rate limiting + QoS runbook
 │
 ├── phase5-dashboard/
-│   └── app.py                 # FastAPI NOC dashboard v5.0 — sidebar SPA, 10 endpoints, WebSocket
-│                              #   GET  /api/policy    — autonomy matrix (ACTION_POLICY + overrides)
-│                              #   PUT  /api/policy    — operator live-edit (locked: CORE/NODE/NONE)
-│                              #   GET  /api/acps      — ACP history from acp_logs/ (full JSON)
-│                              #   WS   /ws/alerts     — live ACP stream (top_features included)
+│   └── app.py                 # FastAPI NOC dashboard v5.0 — sidebar SPA, 14 endpoints, WebSocket
+│                              #   GET  /api/policy        — autonomy matrix
+│                              #   PUT  /api/policy        — live-edit (locked: CORE/NODE/NONE)
+│                              #   GET  /api/acps          — ACP history
+│                              #   GET  /api/explain/{id}  — Q1/Q2/Q3 + remediation commands
+│                              #   GET  /api/metrics/live  — link utilization random walk
+│                              #   GET  /api/tunnel-health — MPLS LSP health from graph model
+│                              #   GET  /api/netflow       — NetFlow summary bridge
+│                              #   GET  /api/compliance    — signed air-gap report
+│                              #   GET  /api/benchmark     — lead-time benchmark results
+│                              #   WS   /ws/alerts         — live ACP stream
 │
+├── phase6-validation/
+│   └── run_scenarios.py       # PS-13 scenario validation suite (4 scenarios, --no-containerlab)
+│
+├── COMMANDS.md                # Full run guide + feature verification checklist
 └── docs/
+    ├── fault-injection.md     # All fault injection methods with commands
     ├── phase1-simulation-doc/
-    │   ├── chunk1.md    # Core node setup (pe1, p1, pe2)
-    │   ├── chunk2.md    # MPLS LDP core
-    │   ├── chunk3.md    # L3VPN (VRF + MP-BGP VPNv4) ← main topology doc
-    │   ├── chunk4.md    # Traffic generation
-    │   └── chunk5.md    # Fault injection + ground-truth labelling
     ├── phase2-telemetry-doc/
-    │   └── telemetry.md       # Exporter, Prometheus, dataset schema
     ├── phase3-models-doc/
-    │   └── aether_engine.md   # Models, graph engine, corroboration, ACP schema, metrics
-    ├── phase4-llm-doc/
-    │   └── llm_copilot.md     # IKB manager, RAG pipeline, NLQ interface, offline setup
-    └── phase5-integration-doc/
-        └── noc_dashboard.md   # FastAPI endpoints, WebSocket protocol, UI layout
+    └── phase4-llm-doc/
 ```

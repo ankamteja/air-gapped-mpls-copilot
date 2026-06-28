@@ -85,6 +85,39 @@ def collect_interface_metrics(node, container):
             ])
     return metrics
 
+def collect_latency_jitter(node, container, peer_ip: str) -> list:
+    """
+    Measures RTT and jitter to a peer using ping from inside the container.
+    Jitter = standard deviation of inter-packet latency (mean of |rtt[i] - rtt[i-1]|).
+    Returns Prometheus metric lines.
+    """
+    metrics = []
+    # Send 10 small ICMP packets; parse rtt min/avg/max/mdev from ping output
+    output = exec_cmd(container, f"ping -c 10 -i 0.2 -W 1 -q {peer_ip}")
+    if not output:
+        return metrics
+    import re
+    # "rtt min/avg/max/mdev = 0.123/0.456/0.789/0.111 ms"
+    m = re.search(r"rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)\s+ms", output)
+    if m:
+        rtt_min, rtt_avg, rtt_max, rtt_mdev = (float(x) for x in m.groups())
+        metrics.extend([
+            f'link_rtt_ms_avg{{node="{node}",peer="{peer_ip}"}} {rtt_avg:.3f}',
+            f'link_rtt_ms_min{{node="{node}",peer="{peer_ip}"}} {rtt_min:.3f}',
+            f'link_rtt_ms_max{{node="{node}",peer="{peer_ip}"}} {rtt_max:.3f}',
+            f'link_jitter_ms{{node="{node}",peer="{peer_ip}"}} {rtt_mdev:.3f}',
+        ])
+    return metrics
+
+
+# Management-plane IP of each peer reachable from each node (eth0 subnet)
+_LATENCY_PEERS = {
+    "pe1": ["172.20.20.3", "172.20.20.4"],  # pe1 → pe2, p1
+    "pe2": ["172.20.20.2", "172.20.20.4"],  # pe2 → pe1, p1
+    "p1":  ["172.20.20.2", "172.20.20.3"],  # p1  → pe1, pe2
+}
+
+
 def collect_frr_metrics(node, container):
     """
     Queries vtysh inside FRR nodes to get routing and neighbor details in JSON.
@@ -196,6 +229,11 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 if node in ["pe1", "p1", "pe2"]:
                     frr_m = collect_frr_metrics(node, container)
                     output_metrics.extend(frr_m)
+
+                # RTT/jitter measurement (core routers only — CE nodes have no reachable peer IPs)
+                for peer_ip in _LATENCY_PEERS.get(node, []):
+                    lat_m = collect_latency_jitter(node, container, peer_ip)
+                    output_metrics.extend(lat_m)
             
             # Join with newlines
             self.wfile.write("\n".join(output_metrics).encode('utf-8') + b"\n")

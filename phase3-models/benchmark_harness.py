@@ -44,29 +44,61 @@ SLA_BREACH_LABEL_THRESHOLD = {"latency": 150, "loss": 150, "corrupt": 150,
                                "rate": 150, "flap": 150}
 
 
+def _load_trained_columns() -> list[str]:
+    """Return the exact feature columns the trained models expect (from saved/columns.txt)."""
+    col_path = os.path.join(SAVE_DIR, "columns.txt")
+    if os.path.exists(col_path):
+        with open(col_path) as f:
+            return [ln.strip() for ln in f if ln.strip()]
+    return []
+
+
 def _load_csv(path: str):
+    """Load dataset CSV, filtering to only the columns the trained models expect."""
+    trained_cols = _load_trained_columns()
+
     rows, labels, timestamps = [], [], []
     with open(path) as f:
         reader = csv.reader(f)
         header = next(reader)
-        feat_start = 3
-        columns = header[feat_start:]
-        num_features = len(columns)
+
+    # Determine which header indices correspond to the trained columns
+    if trained_cols:
+        col_idx = {col: i for i, col in enumerate(header)}
+        selected_indices = [col_idx[c] for c in trained_cols if c in col_idx]
+        columns = [trained_cols[i] for i, c in enumerate(trained_cols) if c in col_idx]
+    else:
+        # Fallback: skip timestamp, fault_label, fault_location (first 3 cols)
+        selected_indices = list(range(3, len(header)))
+        columns = header[3:]
+
+    with open(path) as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
         for row in reader:
-            if len(row) < feat_start + 1:
+            if not row:
                 continue
             timestamps.append(row[0])
             labels.append(row[1])
             feats = []
-            for val in row[feat_start:feat_start + num_features]:
+            for idx in selected_indices:
                 try:
-                    feats.append(float(val))
+                    feats.append(float(row[idx]) if idx < len(row) else 0.0)
                 except ValueError:
                     feats.append(0.0)
-            while len(feats) < num_features:
-                feats.append(0.0)
             rows.append(feats)
+
     X = np.array(rows, dtype=np.float32)
+    # Use saved normalisation params if available, else compute from data
+    mins_path = os.path.join(SAVE_DIR, "norm_mins.npy")
+    maxs_path = os.path.join(SAVE_DIR, "norm_maxs.npy")
+    if os.path.exists(mins_path) and os.path.exists(maxs_path):
+        mins = np.load(mins_path)
+        maxs = np.load(maxs_path)
+        if len(mins) == X.shape[1]:
+            ranges = maxs - mins; ranges[ranges == 0] = 1.0
+            X_norm = np.clip((X - mins) / ranges, 0.0, 1.0)
+            return X_norm, labels, timestamps, columns
     mins = X.min(axis=0); maxs = X.max(axis=0)
     ranges = maxs - mins; ranges[ranges == 0] = 1.0
     X_norm = (X - mins) / ranges
@@ -127,7 +159,7 @@ def _ts_to_epoch(ts_str: str) -> float:
     return 0.0
 
 
-def run_benchmark(data_path: str, seq_len: int = 30):
+def run_benchmark(data_path: str, seq_len: int = None):
     print(f"[*] Aether Lead-Time Benchmark Harness")
     print(f"    Data: {data_path}  |  Device: {DEVICE}\n")
 
@@ -139,20 +171,36 @@ def run_benchmark(data_path: str, seq_len: int = 30):
         print("[-] No trained models found. Run train_models.py first.")
         sys.exit(1)
 
+    # Derive seq_len from the saved checkpoint if not provided
+    if seq_len is None:
+        ae_path = os.path.join(SAVE_DIR, "autoencoder.pt")
+        if os.path.exists(ae_path):
+            ck = torch.load(ae_path, map_location=DEVICE, weights_only=True)
+            seq_len = ck.get("seq_len", 20)
+        else:
+            seq_len = 20
+
     scenarios = _find_scenarios(labels)
     if not scenarios:
         print("[!] No fault segments found in dataset — nothing to benchmark.")
         return
 
-    print(f"  Found {len(scenarios)} fault segment(s):\n")
+    # Sample one scenario per fault class for representative results
+    seen_faults = set()
+    sampled = []
+    for s in scenarios:
+        if s["fault"] not in seen_faults:
+            sampled.append(s)
+            seen_faults.add(s["fault"])
+    scenarios = sampled
+
+    print(f"  Running {len(scenarios)} scenario(s) (one per fault class):\n")
 
     results = []
     for si, scen in enumerate(scenarios, 1):
         fault = scen["fault"]
         breach_idx = scen["start"]
 
-        # Slide a window over rows [0 .. breach_idx + seq_len + 20]
-        # to find the first detection before/after the breach
         window = deque(maxlen=seq_len)
         detection_idx = None
 
@@ -225,7 +273,7 @@ def run_benchmark(data_path: str, seq_len: int = 30):
 
 def main():
     parser = argparse.ArgumentParser(description="Aether Lead-Time Benchmark Harness")
-    _default = os.path.join(os.path.dirname(__file__), "dataset.csv")
+    _default = os.path.join(os.path.dirname(__file__), "dataset_large.csv")
     parser.add_argument("--data", default=_default, help="Dataset CSV path")
     parser.add_argument("--seq-len", type=int, default=30)
     args = parser.parse_args()
@@ -234,7 +282,7 @@ def main():
         print(f"[-] Dataset not found: {args.data}")
         sys.exit(1)
 
-    run_benchmark(args.data, args.seq_len)
+    run_benchmark(args.data)  # seq_len comes from the saved model checkpoint
 
 
 if __name__ == "__main__":

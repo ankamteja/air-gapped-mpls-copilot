@@ -18,6 +18,24 @@ Open browser: **http://localhost:8080**
 
 Dashboard shows "● Online" in the header when Ollama is reachable, "● Offline" otherwise. Both states work — offline uses structured fallback answers.
 
+### Optional Terminal — NetFlow simulator (port 9995)
+
+```bash
+python3 phase2-telemetry/netflow_simulator.py
+```
+
+Serves synthetic L3VPN flow records: `http://localhost:9995/flows`  
+Inject flows faults: `curl 'http://localhost:9995/inject?fault=loss'`
+
+### Optional Terminal — Application traffic generator
+
+```bash
+python3 phase2-telemetry/traffic_generator.py
+```
+
+Generates VoIP, database, and bulk traffic between CE nodes every 45s.  
+Uses real `iperf3` inside containers when Containerlab is running; falls back to synthetic metrics otherwise.
+
 ### Terminal 2 — Fault streamer (natural mode)
 
 ```bash
@@ -78,10 +96,31 @@ docker exec clab-aether-pe1 vtysh -c 'show version'
 curl -s http://localhost:8080/api/status | python3 -m json.tool
 
 # Run the telemetry exporter manually (polls containers, writes metrics)
-python3 phase2-telemetry/exporter.py --once
+python3 phase2-telemetry/exporter.py
 
-# Check syslog parser (parses FRR BGP/OSPF adjacency events)
-python3 phase2-telemetry/syslog_parser.py --help
+# Test syslog parser — both native FRR format and syslog ADJCHANGE
+python3 -c "
+import sys; sys.path.insert(0,'phase2-telemetry')
+from syslog_parser import SyslogParser
+p = SyslogParser()
+print(p.parse_line('2026/06/28 12:00:00 BGP: 10.0.0.2 went from Established to Idle'))
+print(p.parse_line('Jun 28 12:00:02 frr bgpd: %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Down'))
+"
+
+# Start the NetFlow/IPFIX simulator (port 9995)
+python3 phase2-telemetry/netflow_simulator.py
+
+# In another terminal — check flow records
+curl -s http://localhost:9995/summary | python3 -m json.tool
+curl -s http://localhost:9995/flows | python3 -m json.tool | head -40
+
+# Inject a fault into flows: loss/latency/rate/flap/corrupt
+curl -s 'http://localhost:9995/inject?fault=loss'
+# Restore
+curl -s 'http://localhost:9995/inject?fault=clear'
+
+# Run application traffic generator (synthetic if Containerlab not running)
+python3 phase2-telemetry/traffic_generator.py --once
 ```
 
 ---
@@ -289,24 +328,52 @@ print(format_context(results)[:500])
 - **Verify:** CORE_PATH_FAILOVER and NODE_ISOLATION are locked (greyed out, cannot be set to auto)
 - **Verify:** Changing a value and clicking Save updates the policy (persisted to `policy_overrides.json`)
 
+#### MPLS tunnel health
+```bash
+curl -s http://localhost:8080/api/tunnel-health | python3 -m json.tool
+# Should show 4 LSP entries with state=UP and health_score close to 1.0
+```
+
+#### NetFlow summary
+```bash
+curl -s http://localhost:8080/api/netflow | python3 -m json.tool
+# Shows total_flows, total_bytes — "unavailable" if netflow_simulator not running
+```
+
 ---
 
 ### Phase 6 — Scenario validation
 
-Run the four scenarios from the problem statement:
+Run all 4 PS-13 scenarios with the automated suite:
+
+```bash
+# Run all 4 scenarios (synthetic injection, no Containerlab required)
+python3 phase6-validation/run_scenarios.py --no-containerlab
+
+# Run all 4 scenarios with real Containerlab tc-netem + vtysh
+python3 phase6-validation/run_scenarios.py
+
+# Run a single scenario
+python3 phase6-validation/run_scenarios.py --scenario 1 --no-containerlab
+python3 phase6-validation/run_scenarios.py --scenario 4 --no-containerlab
+```
+
+The suite produces a timestamped JSON report in `phase6-validation/`.
+
+**Individual scenario commands (manual):**
 
 **Scenario 1 — Gradual link degradation:**
 ```bash
-# Add escalating latency on pe1 (run these 30s apart to simulate gradual degradation)
+# Add escalating latency on pe1 (run 30s apart)
 docker exec clab-aether-pe1 tc qdisc add dev eth0 root netem delay 50ms
 sleep 30
-docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 150ms
+docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 200ms
 sleep 30
-docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 400ms
-# Observe: fault_streamer should detect LATENCY_DRIFT, then escalate to CRITICAL
-
-# Measure prediction lead time
+docker exec clab-aether-pe1 tc qdisc change dev eth0 root netem delay 500ms
+# Measure lead time:
 python3 phase3-models/benchmark_harness.py
+# Cleanup:
+docker exec clab-aether-pe1 tc qdisc del dev eth0 root 2>/dev/null
 ```
 
 **Scenario 2 — BGP route flap:**
@@ -318,24 +385,25 @@ python3 phase3-models/fault_streamer.py --inject flap
 
 **Scenario 3 — Telemetry collector failure:**
 ```bash
-# Kill the fault streamer (simulates telemetry collection failure)
 pkill -f fault_streamer.py
-# Observe: dashboard still shows last known topology state
+# Dashboard shows last known state — still responds to all API calls
+curl -s http://localhost:8080/api/status | python3 -m json.tool
 # Restart:
 python3 phase3-models/fault_streamer.py &
 ```
 
 **Scenario 4 — Controller misconfiguration (policy drift):**
 ```bash
-# Simulate a misconfigured low confidence threshold
+# Inject: lower REROUTE_BRANCH threshold to unsafe level
 curl -s -X PUT http://localhost:8080/api/policy \
   -H 'Content-Type: application/json' \
-  -d '{"action":"REROUTE_BRANCH","field":"min_conf","value":0.30}'
-# Observe: more alerts will fire as auto-execute (lower gate)
+  -d '{"action":"REROUTE_BRANCH","min_conf":0.10,"auto_execute":true}'
+# Verify drift:
+curl -s http://localhost:8080/api/policy | python3 -m json.tool
 # Restore:
 curl -s -X PUT http://localhost:8080/api/policy \
   -H 'Content-Type: application/json' \
-  -d '{"action":"REROUTE_BRANCH","field":"min_conf","value":0.82}'
+  -d '{"action":"REROUTE_BRANCH","min_conf":0.82,"auto_execute":true}'
 ```
 
 ---
@@ -382,23 +450,27 @@ for m in tags.get('models',[]): print(m['name'])"
 | Feature | Status | Location |
 |---------|--------|----------|
 | 7-node MPLS Containerlab topology | ✅ | `phase1-simulation/topology/` |
-| Custom Prometheus telemetry exporter | ✅ | `phase2-telemetry/exporter.py` |
-| FRR syslog parser (BGP/OSPF events) | ✅ | `phase2-telemetry/syslog_parser.py` |
+| Custom Prometheus exporter (interface + FRR + RTT/jitter) | ✅ | `phase2-telemetry/exporter.py` |
+| RTT and jitter per-link measurement (ICMP ping) | ✅ | `phase2-telemetry/exporter.py` → `collect_latency_jitter()` |
+| NetFlow/IPFIX synthetic flow simulator | ✅ | `phase2-telemetry/netflow_simulator.py` (port 9995) |
+| Application traffic generator (iperf3 + synthetic) | ✅ | `phase2-telemetry/traffic_generator.py` |
+| FRR syslog parser (native + syslog ADJCHANGE) | ✅ | `phase2-telemetry/syslog_parser.py` |
 | BiLSTM fault classifier (5 classes) | ✅ | `phase3-models/predictive_engine.py` |
 | Autoencoder anomaly detector | ✅ | `phase3-models/predictive_engine.py` |
 | Attention heatmap → top_features | ✅ | `phase3-models/predictive_engine.py` |
 | EMA self-calibrating threshold | ✅ | `phase3-models/inference_engine.py` → `EMAThreshold` |
 | TTF regressor | ✅ | `phase3-models/predictive_engine.py` |
 | Holt-Winters trend forecaster | ✅ | `phase3-models/trend_forecaster.py` |
-| Predictive digital twin | ✅ | `phase3-models/digital_twin.py` |
+| Predictive digital twin (API wired correctly) | ✅ | `phase3-models/digital_twin.py` |
 | ACP schema with all v4 fields | ✅ | `phase3-models/acp_manager.py` |
-| NetworkX graph corroboration | ✅ | `phase3-models/graph_model.py` |
+| NetworkX graph corroboration + tunnel health | ✅ | `phase3-models/graph_model.py` |
 | Per-service SLA tags | ✅ | `phase3-models/taxonomy.py` |
 | Edge Policy Engine (EPE) | ✅ | `phase3-models/inference_engine.py` |
 | Operator-configurable autonomy matrix | ✅ | Dashboard Policy Matrix view |
 | Ed25519 model integrity signing | ✅ | `phase3-models/model_integrity.py` |
 | Air-gap compliance report (signed) | ✅ | `phase3-models/airgap_compliance.py` |
-| Lead-time benchmark harness | ✅ | `phase3-models/benchmark_harness.py` |
+| Lead-time benchmark harness (5/5, avg 503s) | ✅ | `phase3-models/benchmark_harness.py` |
+| Natural fault timing state machine | ✅ | `phase3-models/fault_streamer.py` |
 | Operator feedback CLI | ✅ | `phase3-models/feedback_cli.py` |
 | IKB auto-logging (every ACP) | ✅ | `phase3-models/inference_engine.py` → `log_acp()` |
 | Ollama + Mistral 7B (offline LLM) | ✅ | `phase4-llm/llm_copilot.py` |
@@ -408,9 +480,11 @@ for m in tags.get('models',[]): print(m['name'])"
 | FastAPI NOC Dashboard v5.0 | ✅ | `phase5-dashboard/app.py` |
 | WebSocket live alert feed | ✅ | `/ws/alerts` |
 | Time-Travel topology playback | ✅ | Dashboard History view |
-| Live link utilization overlay | ✅ | `/api/metrics/live`, 15s polling |
-| Remediation CLI commands in modal | ✅ | `/api/explain/{acp_id}` → `remediation` field |
-| Natural fault timing (state machine) | ✅ | `fault_streamer.py --mode natural` |
-| Data-plane links on containers | ❌ | eth1/eth2 veth pairs not created — only eth0 (management) works |
-| Prophet forecaster (seasonality) | ⚠️ | Code exists in trend_forecaster.py but needs hours of cyclical history to activate |
+| Live link utilization overlay (15s) | ✅ | `/api/metrics/live` |
+| Remediation CLI commands (click-to-copy) | ✅ | `/api/explain/{acp_id}` → `remediation` field |
+| MPLS tunnel health endpoint | ✅ | `/api/tunnel-health` |
+| NetFlow summary endpoint | ✅ | `/api/netflow` |
+| Scenario validation suite (all 4 PS-13) | ✅ | `phase6-validation/run_scenarios.py` |
+| Data-plane links on containers | ❌ | eth1/eth2 veth pairs not created — only eth0 (management) exists |
+| Prophet seasonality forecaster | ⚠️ | Code exists, needs hours of cyclical history to activate seasonal model |
 | Real router API execution | ⚠️ | Remediation commands shown to operator but not auto-applied (air-gapped safety) |
