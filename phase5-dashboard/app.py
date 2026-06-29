@@ -464,7 +464,7 @@ svg.topo-svg{width:100%;height:100%}
 
     <div class="nav-item active" data-nav="network" onclick="showPanel('network')">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="4" r="1.8" fill="currentColor" stroke="none"/><circle cx="2.5" cy="13" r="1.8" fill="currentColor" stroke="none"/><circle cx="13.5" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="8" y1="5.8" x2="3.5" y2="11.2"/><line x1="8" y1="5.8" x2="12.5" y2="11.2"/><line x1="4.3" y1="13" x2="11.7" y2="13"/></svg></span>
-      <span class="nav-label">Network</span>
+      <span class="nav-label">Overview</span>
     </div>
     <div class="nav-item" data-nav="alerts" onclick="showPanel('alerts')">
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2a5 5 0 0 0-5 5v3.5L1.5 13h13L13 10.5V7a5 5 0 0 0-5-5z"/><path d="M6.5 13a1.5 1.5 0 0 0 3 0"/></svg></span>
@@ -520,29 +520,70 @@ svg.topo-svg{width:100%;height:100%}
       <button class="notif-dismiss" onclick="dismissNotif()" title="Dismiss">✕</button>
     </div>
 
-    <!-- ── VIEW: Live Network ─────────────────────────────────────── -->
+    <!-- ── VIEW: Overview (Q1 / Q2 / Q3) ──────────────────────────── -->
     <div class="view active" id="view-network">
       <div class="page-wrap">
-        <div>
-          <div class="page-header">
-            <div>
-              <div class="page-title">Live Network
-                <span id="topo-live-dot" style="color:#3fb950;font-size:16px;margin-left:8px">&#9679;</span>
-              </div>
-              <div class="page-subtitle">7-node MPLS L3VPN topology — real-time fault monitoring</div>
+
+        <!-- Page header -->
+        <div class="page-header">
+          <div>
+            <div class="page-title">NOC Situation Overview
+              <span id="topo-live-dot" style="color:#3fb950;font-size:14px;margin-left:10px">&#9679;</span>
+            </div>
+            <div class="page-subtitle">Air-gapped predictive copilot — 7-node MPLS L3VPN &mdash; SD-WAN overlay</div>
+          </div>
+          <div class="page-actions">
+            <span class="badge" id="compliance-badge-ov">CHECKING&hellip;</span>
+            <span class="badge badge-blue" id="lead-time-badge">Lead time: —</span>
+          </div>
+        </div>
+
+        <!-- ── 3 core questions ── -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+
+          <!-- Q1 -->
+          <div class="card" style="border-top:2px solid #c0392b">
+            <div class="card-header" style="padding:8px 14px">
+              <span style="font-size:10px;font-weight:700;color:#c0392b;letter-spacing:0.7px;text-transform:uppercase">Q1 &mdash; What fails next?</span>
+            </div>
+            <div class="card-body" style="padding:14px 16px" id="q1-body">
+              <div style="font-size:36px;font-weight:700;color:#4a5566;font-family:'Consolas','Courier New',monospace;line-height:1" id="q1-ttf">—</div>
+              <div style="font-size:10px;color:#3d4552;margin-top:3px;margin-bottom:12px;font-family:monospace" id="q1-ttf-label">awaiting first prediction</div>
+              <div style="font-size:14px;font-weight:600;color:#c4c9d4;margin-bottom:4px" id="q1-fault">Monitoring…</div>
+              <div style="font-size:11px;color:#6d7989;margin-bottom:8px" id="q1-severity"></div>
+              <div style="font-size:11px;color:#4a5566;font-family:monospace" id="q1-sites"></div>
+            </div>
+          </div>
+
+          <!-- Q2 -->
+          <div class="card" style="border-top:2px solid #b8860b">
+            <div class="card-header" style="padding:8px 14px">
+              <span style="font-size:10px;font-weight:700;color:#b8860b;letter-spacing:0.7px;text-transform:uppercase">Q2 &mdash; Why is risk elevated?</span>
+            </div>
+            <div class="card-body" style="padding:14px 16px" id="q2-body">
+              <div style="color:#3d4552;font-size:11px">Awaiting first prediction…</div>
+            </div>
+          </div>
+
+          <!-- Q3 -->
+          <div class="card" style="border-top:2px solid #2e6da4">
+            <div class="card-header" style="padding:8px 14px">
+              <span style="font-size:10px;font-weight:700;color:#2e6da4;letter-spacing:0.7px;text-transform:uppercase">Q3 &mdash; What corrective action?</span>
+            </div>
+            <div class="card-body" style="padding:14px 16px" id="q3-body">
+              <div style="color:#3d4552;font-size:11px">Awaiting first prediction…</div>
             </div>
           </div>
         </div>
 
-        <!-- Topology card -->
+        <!-- ── Topology ── -->
         <div class="topo-card">
           <div class="topo-card-header">
-            <span class="card-title">Topology</span>
-            <div style="display:flex;gap:10px;align-items:center">
-              <span class="topo-legend" style="position:static;font-size:12px;color:#6b788e;display:flex;gap:16px">
-                <span class="legend-item"><span class="legend-line legend-ok"></span> OK</span>
-                <span class="legend-item"><span class="legend-line legend-deg" style="height:3px"></span> Degraded</span>
-              </span>
+            <span class="card-title">Live Topology &mdash; MPLS L3VPN</span>
+            <div style="display:flex;gap:16px;align-items:center;font-size:11px;color:#6b788e">
+              <span><span class="legend-line legend-ok" style="display:inline-block;width:14px;height:2px;margin-right:4px"></span>OK</span>
+              <span><span class="legend-line legend-deg" style="display:inline-block;width:14px;height:3px;margin-right:4px"></span>Degraded</span>
+              <span style="color:#3d4552">CE <span style="color:#3a6a3a">■</span> &nbsp; PE <span style="color:#3d6090">■</span> &nbsp; P <span style="color:#6050a0">■</span></span>
             </div>
           </div>
           <div class="topo-svg-wrap">
@@ -551,53 +592,54 @@ svg.topo-svg{width:100%;height:100%}
           <div class="topo-status-bar" id="topo-status-bar">Monitoring live — waiting for fault events…</div>
         </div>
 
-        <!-- How Aether works pipeline -->
-        <details class="card" style="overflow:visible">
-          <summary>
-            <span class="card-title" style="margin:0">Detection &amp; remediation pipeline</span>
-            <span style="color:#3d4552;font-size:11px;margin-left:auto">expand</span>
-          </summary>
-          <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:start">
-            <div class="pipe-step">
-              <div class="pipe-num">01 / TELEMETRY</div>
-              <div class="pipe-title">Scrape</div>
-              <div class="pipe-body">FRR metrics every 30s — interface counters, BGP session state, packet loss, RTT jitter, OSPF LSAs, MPLS label bindings.</div>
+        <!-- ── Bottom row: Air-gap + Telemetry + Pipeline ── -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Air-gap compliance -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Air-Gap Compliance</span>
+              <span class="badge badge-green" id="airgap-status-badge">Verifying…</span>
             </div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step">
-              <div class="pipe-num">02 / MODEL</div>
-              <div class="pipe-title">BiLSTM + Attention</div>
-              <div class="pipe-body">Last 20 scrapes fed as a sequence. Outputs: fault class, confidence score (0–100%), Time-To-Failure in seconds.</div>
-            </div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step">
-              <div class="pipe-num">03 / GRAPH</div>
-              <div class="pipe-title">Clonal Search</div>
-              <div class="pipe-body">NetworkX runs 3 routing permutations (baseline, rerouted, QoS-throttled), picks lowest SLA violation score as the recommended action.</div>
-            </div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step">
-              <div class="pipe-num">04 / TWIN</div>
-              <div class="pipe-title">Digital Twin</div>
-              <div class="pipe-body">Simulated replica runs in parallel. High divergence between twin and live state corroborates the anomaly.</div>
-            </div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step">
-              <div class="pipe-num">05 / POLICY</div>
-              <div class="pipe-title">Edge Policy Engine</div>
-              <div class="pipe-body">conf ≥ threshold + models agree → AUTO_EXECUTE (FRR commands issued). Otherwise → RECOMMEND_ONLY (Approve button shown).</div>
+            <div class="card-body" style="padding:12px 16px" id="airgap-detail">
+              <div style="color:#3d4552;font-size:11px">Loading compliance report…</div>
             </div>
           </div>
-        </details>
 
-        <!-- Recent alerts -->
+          <!-- Detection pipeline summary -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">Detection Pipeline</span></div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:10px 12px;align-items:start">
+              <div class="pipe-step" style="padding:8px 10px">
+                <div class="pipe-num">01</div>
+                <div class="pipe-title" style="font-size:11px">Telemetry</div>
+                <div class="pipe-body" style="font-size:10px">FRR scrape every 30s — interface, BGP, OSPF, MPLS, RTT/jitter.</div>
+              </div>
+              <div class="pipe-arrow" style="padding-top:22px;font-size:11px">→</div>
+              <div class="pipe-step" style="padding:8px 10px">
+                <div class="pipe-num">02</div>
+                <div class="pipe-title" style="font-size:11px">BiLSTM</div>
+                <div class="pipe-body" style="font-size:10px">20-step sequence → fault class + confidence + TTF (seconds).</div>
+              </div>
+              <div class="pipe-arrow" style="padding-top:22px;font-size:11px">→</div>
+              <div class="pipe-step" style="padding:8px 10px">
+                <div class="pipe-num">03</div>
+                <div class="pipe-title" style="font-size:11px">Graph + EPE</div>
+                <div class="pipe-body" style="font-size:10px">Clonal search picks best routing permutation → AUTO or RECOMMEND.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent alerts mini-feed -->
         <div class="card">
           <div class="card-header">
             <span class="card-title">Recent Alerts</span>
             <span id="mini-feed-count" class="badge badge-yellow">0</span>
           </div>
-          <div class="card-body" id="mini-feed" style="max-height:480px;overflow-y:auto"></div>
+          <div class="card-body" id="mini-feed" style="max-height:400px;overflow-y:auto;padding:0"></div>
         </div>
+
       </div>
     </div>
 
@@ -638,14 +680,23 @@ svg.topo-svg{width:100%;height:100%}
         </div>
 
         <div class="card">
-          <div class="card-header"><span class="card-title">Quick queries</span></div>
-          <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
-            <button class="quick-btn" onclick="quickQ('What is likely to fail next and when?')">What fails next?</button>
-            <button class="quick-btn" onclick="quickQ('Why is risk elevated on the network?')">Why elevated?</button>
-            <button class="quick-btn" onclick="quickQ('How do I fix BGP neighbor flap on pe1?')">Fix BGP flap?</button>
-            <button class="quick-btn" onclick="quickQ('Show me mitigation steps for packet loss on the pe1-p1 link')">Fix packet loss?</button>
-            <button class="quick-btn" onclick="quickQ('What is the autonomy policy and what actions are auto-executed?')">Autonomy policy?</button>
-            <button class="quick-btn" onclick="quickQ('Show the most recent anomaly context packet and explain it')">Last ACP?</button>
+          <div class="card-header"><span class="card-title">Quick queries — aligned to the 3 NOC questions</span></div>
+          <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div>
+              <div style="font-size:10px;color:#c0392b;font-weight:700;margin-bottom:6px;font-family:monospace">Q1 — What fails next?</div>
+              <button class="quick-btn" style="width:100%;margin-bottom:6px" onclick="quickQ('What is likely to fail next and when? Give me the specific node, fault type, and estimated time to SLA breach.')">What fails next &amp; when?</button>
+              <button class="quick-btn" style="width:100%" onclick="quickQ('Which sites and services are at risk right now? List affected CE, PE, and customer VRFs.')">Which sites are at risk?</button>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#b8860b;font-weight:700;margin-bottom:6px;font-family:monospace">Q2 — Why is risk elevated?</div>
+              <button class="quick-btn" style="width:100%;margin-bottom:6px" onclick="quickQ('Why is risk elevated? Which telemetry signals triggered the latest alert? Mention interface utilization, jitter, packet loss, BGP state, and digital twin divergence.')">Why is risk elevated?</button>
+              <button class="quick-btn" style="width:100%" onclick="quickQ('Explain the root cause of the latest fault prediction. What precursor signals appeared before the anomaly?')">Root cause analysis?</button>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#2e6da4;font-weight:700;margin-bottom:6px;font-family:monospace">Q3 — What corrective action?</div>
+              <button class="quick-btn" style="width:100%;margin-bottom:6px" onclick="quickQ('What corrective action should I take before SLA breach? Give me the specific FRR commands to run on the affected PE router.')">What corrective action?</button>
+              <button class="quick-btn" style="width:100%" onclick="quickQ('How do I fix BGP route flap and reroute traffic? Step by step remediation for the MPLS network.')">Step-by-step remediation?</button>
+            </div>
           </div>
         </div>
       </div>
@@ -782,23 +833,6 @@ svg.topo-svg{width:100%;height:100%}
       </div>
     </div>
 
-  </div><!-- #main-content -->
-
-  <!-- ── Incident Modal ─────────────────────────────────────────── -->
-  <div id="incident-modal">
-    <div id="modal-header">
-      <span id="modal-title">Incident Report</span>
-      <button class="modal-close" onclick="closeModal()" title="Close">✕</button>
-    </div>
-    <div id="modal-body">
-      <div style="color:#484f58;padding:30px 0;text-align:center">Click an alert to load the incident report.</div>
-    </div>
-    <div id="modal-footer" style="display:none">
-      <button class="approve-btn" id="modal-approve-btn" onclick="approveCurrentAcp()">✓ Execute Action</button>
-      <button class="reject-btn" id="modal-reject-btn" onclick="rejectCurrentAcp()">✗ Reject</button>
-    </div>
-  </div>
-
     <!-- ── VIEW: Remediation Log ─────────────────────────────────── -->
     <div class="view" id="view-logs">
       <div class="page-wrap">
@@ -827,6 +861,23 @@ svg.topo-svg{width:100%;height:100%}
         </div>
       </div>
     </div>
+
+  </div><!-- #main-content -->
+
+  <!-- ── Incident Modal ─────────────────────────────────────────── -->
+  <div id="incident-modal">
+    <div id="modal-header">
+      <span id="modal-title">Incident Report</span>
+      <button class="modal-close" onclick="closeModal()" title="Close">✕</button>
+    </div>
+    <div id="modal-body">
+      <div style="color:#484f58;padding:30px 0;text-align:center">Click an alert to load the incident report.</div>
+    </div>
+    <div id="modal-footer" style="display:none">
+      <button class="approve-btn" id="modal-approve-btn" onclick="approveCurrentAcp()">✓ Execute Action</button>
+      <button class="reject-btn" id="modal-reject-btn" onclick="rejectCurrentAcp()">✗ Reject</button>
+    </div>
+  </div>
 
 </div><!-- #app-body -->
 
@@ -1226,7 +1277,193 @@ function renderAlert(acp, prepend) {
   if (prepend && acp.execution_mode === 'RECOMMEND_ONLY' && acp.action && acp.action !== 'NO_ACTION') {
     showActionNotif(acp);
   }
+
+  // Drive the Q1/Q2/Q3 overview panels from the newest alert
+  if (prepend) updateQ123(acp);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Overview: the three operational questions (Q1 / Q2 / Q3)
+//   Q1 — What is likely to fail next, and when?
+//   Q2 — Why is risk elevated — which signals contributed?
+//   Q3 — What corrective action should be taken before SLA impact?
+// ─────────────────────────────────────────────────────────────────────────────
+const SIGNAL_LABELS = {
+  util: 'Interface utilization', rx_util: 'RX utilization', tx_util: 'TX utilization',
+  jitter: 'Jitter', latency: 'Latency / RTT', rtt: 'Latency / RTT',
+  loss: 'Packet loss', drops: 'Packet drops', errors: 'Interface errors',
+  bgp: 'BGP session state', ospf: 'OSPF adjacency', flap: 'Route flap rate',
+  label: 'MPLS label churn', tunnel: 'Tunnel health',
+};
+
+function prettySignal(feat) {
+  if (feat == null) return '';
+  // top_features can be a string ("pe1_util") or an object ({name,value} / {feature,weight})
+  let name = (typeof feat === 'object')
+    ? (feat.name || feat.feature || feat.signal || JSON.stringify(feat))
+    : String(feat);
+  let weight = (typeof feat === 'object')
+    ? (feat.value ?? feat.weight ?? feat.score ?? null) : null;
+  // node prefix → readable
+  let node = '';
+  for (const [prefix, n] of FEAT_PREFIX) {
+    if (name.startsWith(prefix)) { node = NODES[n] ? NODES[n].label : n; name = name.slice(prefix.length); break; }
+  }
+  let metric = name;
+  for (const key of Object.keys(SIGNAL_LABELS)) {
+    if (name.includes(key)) { metric = SIGNAL_LABELS[key]; break; }
+  }
+  const lbl = (node ? node + ' — ' : '') + metric;
+  return weight != null ? `${lbl} <span style="color:#4a5566">(${(+weight).toFixed(2)})</span>` : lbl;
+}
+
+function fmtTTF(sec) {
+  if (sec == null || sec < 0) return null;
+  if (sec < 1)   return (sec * 1000).toFixed(0) + 'ms';
+  if (sec < 90)  return sec.toFixed(0) + 's';
+  if (sec < 5400) return (sec / 60).toFixed(1) + 'min';
+  return (sec / 3600).toFixed(1) + 'h';
+}
+
+function affectedSites(acp) {
+  const sites = new Set();
+  for (const p of (acp.paths_impacted || [])) {
+    for (const part of String(p).split(/->|→|,/)) {
+      const s = part.trim();
+      if (s) sites.add(s);
+    }
+  }
+  for (const n of featuresToNodes(acp.top_features || [])) {
+    sites.add(NODES[n] ? NODES[n].label : n);
+  }
+  return [...sites];
+}
+
+const SEV_COLOR = {CRITICAL:'#c0392b', HIGH:'#b8860b', MEDIUM:'#2e6da4', LOW:'#2d7a3a'};
+
+let _latestOverviewAcp = null;
+function openLatestIncident() {
+  if (_latestOverviewAcp) openIncidentModal(_latestOverviewAcp);
+}
+
+function updateQ123(acp) {
+  _latestOverviewAcp = acp;
+  const sev = acp.severity || 'MEDIUM';
+  const sevColor = SEV_COLOR[sev] || '#6d7989';
+  const conf = acp.confidence != null ? (acp.confidence * 100).toFixed(0) + '%' : '?';
+  const ttf  = fmtTTF(acp.ttf);
+
+  // ── Q1 — what fails next + when ──
+  const q1ttf = document.getElementById('q1-ttf');
+  if (q1ttf) {
+    q1ttf.textContent = ttf || '—';
+    q1ttf.style.color = ttf ? sevColor : '#4a5566';
+  }
+  const q1lbl = document.getElementById('q1-ttf-label');
+  if (q1lbl) q1lbl.textContent = ttf ? 'estimated lead time before SLA breach' : 'no time-to-failure estimate';
+  const q1f = document.getElementById('q1-fault');
+  if (q1f) q1f.textContent = acp.fault_class || 'Unknown';
+  const q1s = document.getElementById('q1-severity');
+  if (q1s) q1s.innerHTML = `<span class="badge" style="background:${sevColor}22;color:${sevColor};border:1px solid ${sevColor}55">${sev}</span> &nbsp;conf ${conf}`;
+  const sites = affectedSites(acp);
+  const q1sites = document.getElementById('q1-sites');
+  if (q1sites) q1sites.innerHTML = sites.length
+    ? 'Affected: ' + sites.slice(0, 6).join(', ')
+    : 'Affected scope: pe1–p1 segment';
+
+  // ── Q2 — why risk is elevated (which signals) ──
+  const q2 = document.getElementById('q2-body');
+  if (q2) {
+    const feats = (acp.top_features || []).slice(0, 5);
+    let html = '';
+    if (feats.length) {
+      html += '<div style="font-size:10px;color:#3d4552;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Top contributing signals</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:5px">' +
+        feats.map(f => `<div style="font-size:11px;color:#c4c9d4;font-family:monospace">&bull; ${prettySignal(f)}</div>`).join('') +
+        '</div>';
+    }
+    const why = (acp.rationale || '').trim();
+    if (why) {
+      html += `<div style="font-size:11px;color:#6d7989;line-height:1.55;margin-top:${feats.length ? '10px' : '0'};border-top:${feats.length ? '1px solid #22262b' : 'none'};padding-top:${feats.length ? '8px' : '0'}">${why.slice(0, 220)}</div>`;
+    }
+    q2.innerHTML = html || '<div style="color:#3d4552;font-size:11px">No contributing signals reported.</div>';
+  }
+
+  // ── Q3 — what corrective action ──
+  const q3 = document.getElementById('q3-body');
+  if (q3) {
+    const action = acp.action || 'NO_ACTION';
+    const mode = acp.execution_mode || 'RECOMMEND_ONLY';
+    const auto = mode === 'AUTO_EXECUTE';
+    const modeColor = auto ? '#2d7a3a' : '#b8860b';
+    if (action === 'NO_ACTION') {
+      q3.innerHTML = '<div style="font-size:13px;color:#2d7a3a;font-weight:600">No action required</div>' +
+        '<div style="font-size:11px;color:#6d7989;margin-top:6px">System nominal or fault below action threshold. Logging and observing.</div>';
+    } else {
+      q3.innerHTML =
+        `<div style="font-size:15px;font-weight:700;color:#c4c9d4;font-family:monospace;margin-bottom:6px">${action}</div>` +
+        `<div style="margin-bottom:10px"><span class="badge" style="background:${modeColor}22;color:${modeColor};border:1px solid ${modeColor}55;font-family:monospace">${mode}</span></div>` +
+        `<div style="font-size:11px;color:#6d7989;line-height:1.5">${auto
+            ? 'Edge Policy Engine authorized autonomous execution — commands issued and logged.'
+            : 'Below auto-execute threshold — awaiting operator approval.'}</div>` +
+        `<button class="quick-btn" style="margin-top:10px" onclick="openLatestIncident()">Open incident report &rarr;</button>`;
+    }
+  }
+
+  // Header lead-time badge
+  const lt = document.getElementById('lead-time-badge');
+  if (lt) lt.textContent = ttf ? 'Lead time: ' + ttf : 'Lead time: —';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Air-gap compliance panel (Objective: verifiably zero outbound dependency)
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadCompliance() {
+  const detail = document.getElementById('airgap-detail');
+  const badge  = document.getElementById('airgap-status-badge');
+  const ovBadge = document.getElementById('compliance-badge-ov');
+  try {
+    const r = await fetch('/api/compliance');
+    const d = await r.json();
+    const probes = d.probes || [];
+    // Compliant = the airgap_compliance module reported COMPLIANT (every probe unreachable)
+    const compliant = d.status === 'COMPLIANT' ||
+      (probes.length > 0 && probes.every(p => p.reachable === false));
+    if (badge) {
+      badge.textContent = compliant ? '✓ COMPLIANT' : '⚠ EGRESS REACHABLE';
+      badge.className = 'badge ' + (compliant ? 'badge-green' : 'badge-red');
+    }
+    if (ovBadge) {
+      ovBadge.textContent = compliant ? '✓ AIR-GAPPED' : '⚠ NOT AIR-GAPPED';
+      ovBadge.className = 'badge ' + (compliant ? 'badge-green' : 'badge-red');
+    }
+    let rows = '';
+    if (probes.length) {
+      rows = probes.slice(0, 8).map(p => {
+        const ok = p.reachable === false;  // unreachable outbound = good (air-gapped)
+        const target = p.label ? `${p.label} (${p.host}:${p.port})` : `${p.host}:${p.port}`;
+        return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0">
+          <span style="color:${ok ? '#2d7a3a' : '#c0392b'};font-family:monospace;width:14px">${ok ? '✓' : '✗'}</span>
+          <span style="color:#6d7989;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${target}</span>
+          <span style="margin-left:auto;color:${ok ? '#2d7a3a' : '#c0392b'};font-size:10px;font-family:monospace;flex-shrink:0">${ok ? 'BLOCKED' : 'REACHABLE'}</span>
+        </div>`;
+      }).join('');
+    }
+    const signed = d.signature;
+    if (detail) {
+      detail.innerHTML =
+        `<div style="font-size:11px;color:#6d7989;line-height:1.5;margin-bottom:${rows ? '10px' : '0'}">${compliant
+          ? 'All outbound connection attempts failed at runtime — inference is fully local, zero cloud dependency.'
+          : 'Some outbound hosts are reachable on this machine — a true air-gapped deployment would block all egress. (Dev box has internet; the probe result is real.)'}</div>` +
+        rows +
+        (signed ? `<div style="font-size:9px;color:#3d4552;margin-top:10px;font-family:monospace;word-break:break-all;border-top:1px solid #22262b;padding-top:8px">Ed25519-signed report &mdash; sig: ${String(signed).slice(0, 40)}…</div>` : '');
+    }
+  } catch(e) {
+    if (detail) detail.innerHTML = '<div style="color:#c0392b;font-size:11px">Compliance check unavailable: ' + e + '</div>';
+  }
+}
+loadCompliance();
+setInterval(loadCompliance, 60000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Load history on startup
@@ -1237,12 +1474,16 @@ async function loadHistory() {
     const d = await r.json();
     if (!d.acps || !d.acps.length) return;
     // Render oldest→newest (they're sorted ascending) to build correct snapshot history
+    let lastAcp = null;
     for (const entry of d.acps) {
       if (!seenAcpIds.has(entry.acp_id)) {
         seenAcpIds.add(entry.acp_id);
-        renderAlert(acpToAlert(entry), false);
+        lastAcp = acpToAlert(entry);
+        renderAlert(lastAcp, false);
       }
     }
+    // Populate the Q1/Q2/Q3 overview from the most recent historical alert
+    if (lastAcp) updateQ123(lastAcp);
     // After loading, scroll both feeds to top (newest is what the operator wants to see)
     document.getElementById('mini-feed').scrollTop = 0;
     document.getElementById('full-feed').scrollTop = 0;
