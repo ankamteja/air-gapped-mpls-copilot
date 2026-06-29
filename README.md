@@ -95,6 +95,8 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **1** | 7-node MPLS L3VPN (Containerlab + FRR) — CE/PE/P, OSPF/LDP/VPNv4 | ✅ Complete |
 | **1** | Traffic generation (VoIP, DB, HTTP, SSH across L3VPN) | ✅ Complete |
 | **1** | Fault injection — 5 types (latency, loss, corrupt, rate, flap) via tc-netem | ✅ Complete |
+| **1** | SD-WAN overlay — real GRE tunnel PE1↔PE2 over the OSPF core (`overlay-setup.sh`) | ✅ Complete |
+| **1** | Baseline QoS — HTB priority/interactive/bulk classes + DSCP on PE→CE egress (`qos-setup.sh`) | ✅ Complete |
 | **1** | Scenario runner (all 4 validation scenarios, timed) | ✅ Complete |
 | **2** | Custom threaded Prometheus exporter — interface + FRR + RTT/jitter metrics | ✅ Complete |
 | **2** | RTT and jitter measurement via ICMP ping (per-link, 10-packet bursts) | ✅ Complete |
@@ -105,7 +107,7 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **2** | Labeled dataset collection (fault_injector → dataset.csv) | ✅ Complete |
 | **3** | LSTM Autoencoder (unsupervised anomaly) | ✅ Complete |
 | **3** | LSTM Attention Classifier (5-class fault) | ✅ Complete |
-| **3** | TTF Regressor (time-to-SLA-breach) | ✅ Complete |
+| **3** | TTF Regressor — `time_to_breach` lead-time target (sustained-breach label + precursor sampling); real ~20–43s live lead times | ✅ Complete |
 | **3** | NetworkX Clonal State-Space Search + tunnel health API | ✅ Complete |
 | **3** | Dual-model corroboration gate + autonomy policy matrix | ✅ Complete |
 | **3** | Anomaly Context Packet (ACP) JSON schema | ✅ Complete |
@@ -122,15 +124,17 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **4** | ChromaDB RAG over ACP logs + topology runbooks (ikb_manager.py) | ✅ Complete |
 | **4** | NLQ interface (intent detection, IKB retrieval, fallback answers) | ✅ Complete |
 | **4** | Runbooks: BGP flap, congestion, packet loss, topology reference | ✅ Complete |
-| **5** | FastAPI NOC dashboard (app.py — topology, alerts, NLQ, compliance) | ✅ Complete |
+| **5** | FastAPI NOC dashboard (app.py) — Q1/Q2/Q3 overview, alerts, NLQ, compliance | ✅ Complete |
 | **5** | WebSocket live alert stream + 4s polling dual-path fallback | ✅ Complete |
-| **5** | Left-sidebar SPA — 5 views: Live Network, Alert Feed, Ask Aether, History, Policy Matrix | ✅ Complete |
-| **5** | Live topology SVG with link utilization overlay (green/yellow/red, 15s refresh) | ✅ Complete |
+| **5** | Left-sidebar SPA — 7 views: Overview, Alerts, Ask Aether, History, Policy Matrix, Remediation Log, Validation | ✅ Complete |
+| **5** | Q1/Q2/Q3 overview — the three NOC questions surfaced live from the latest ACP | ✅ Complete |
+| **5** | Live topology SVG — real exporter telemetry when available, synthetic fallback (source-labelled) | ✅ Complete |
+| **5** | Multi-turn NLQ — server-side session store, context-resolving follow-ups | ✅ Complete |
 | **5** | Time-Travel Topology Playback — slider scrubs ACP snapshot history | ✅ Complete |
 | **5** | Autonomy Matrix editor — live-editable policy table, locked rows for critical actions | ✅ Complete |
-| **5** | Remediation CLI commands in incident modal — node-specific, click-to-copy | ✅ Complete |
-| **5** | `/api/tunnel-health` — MPLS LSP health from graph model state | ✅ Complete |
-| **5** | `/api/netflow` — NetFlow flow summary bridge | ✅ Complete |
+| **5** | Remediation Log — real `docker exec` command output for every action taken | ✅ Complete |
+| **5** | Validation view — Phase 6 scenarios with lead time / MTTD + run button | ✅ Complete |
+| **5** | `/api/tunnel-health`, `/api/netflow`, `/api/scenarios`, `/api/action-log` | ✅ Complete |
 | **6** | Scenario validation suite (`run_scenarios.py`) — all 4 PS-13 scenarios automated | ✅ Complete |
 | **6** | Scenario 1: gradual link degradation → benchmark lead-time | ✅ Complete |
 | **6** | Scenario 2: BGP route flap → MTTD measurement | ✅ Complete |
@@ -139,17 +143,52 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 
 ---
 
+## Measured results & honest scope
+
+| Metric | Result |
+|---|---|
+| Fault-class accuracy (held-out windows) | ~82% |
+| Live prediction lead time | ~20–43s before SLA breach |
+| Benchmark lead time (5 gradual-degradation scenarios) | 5/5 detected, **avg 503s**, up to 834s before breach |
+| Phase 6 scenario validation | **4/4 passing** (S1 lead time 524s) |
+| Air-gap compliance | signed probe report; Ed25519-signed models; 100% local inference |
+
+**Honest scope (read before evaluating):**
+- The demo runs on **synthetic data** — a temporally-realistic generated dataset and simulated
+  NetFlow/traffic. The real Containerlab data plane is optional (`./run.sh --clab`).
+- Remediation is currently **open-loop**: Aether predicts and acts, but does not yet verify the
+  action worked or auto-roll-back when the fault clears (the highest-leverage next build).
+- Full status vs. the problem statement is in [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md); the
+  forward-looking backlog of gaps and ideas is in [`GAPS_AND_IDEAS.md`](GAPS_AND_IDEAS.md).
+
+---
+
+## The three operational questions
+
+The problem statement asks the NOC to answer three questions in real time. Every alert in
+Aether is rendered against them, and the dashboard **Overview** surfaces them directly:
+
+| | Question | How Aether answers |
+|---|---|---|
+| **Q1** | What is likely to fail next — and when? | fault class + confidence + **time-to-breach lead time** from the TTF regressor |
+| **Q2** | Why is risk elevated — which signals contributed? | top attention features (decoded per node/metric) + corroboration rationale |
+| **Q3** | What corrective action before SLA/security impact? | policy-gated action (`AUTO_EXECUTE` vs `RECOMMEND_ONLY`) + the exact FRR/`tc` commands |
+
+---
+
 ## Dashboard Features (v5.0)
 
-The NOC dashboard (`http://localhost:8080`) is a single-page application with a collapsible left sidebar:
+The NOC dashboard (`http://localhost:8080`) is a single-page application with a collapsible left sidebar — **7 views**:
 
 | Panel | Description |
 |---|---|
-| **Live Network** | MPLS topology SVG with animated red dashed links for active faults. pe1↔p1 highlighted whenever any non-Healthy ACP is active — state-driven, no flicker. Recent alerts alongside topology. |
-| **Alert Feed** | Full scrollable history of every ACP: fault class, severity, confidence, TTF, execution mode, rationale. Click any alert to load explanation in the Copilot panel. |
-| **NLQ Copilot** | Natural-language interface to Mistral 7B (offline). Ask free-form questions; the RAG pipeline retrieves runbook context from ChromaDB before generating. Graceful offline fallback if Ollama is unavailable. |
-| **Time-Travel** | Slider scrubs backward through every ACP snapshot captured since the dashboard started. Left side re-renders the topology at that historical state; right side shows the ACP event details (fault class, severity, conf, TTF, rationale, degraded links). |
-| **Autonomy Matrix** | Live editor for the operator autonomy policy. Editable rows: `REROUTE_BRANCH`, `QOS_SHAPE_QUEUE`. Locked rows (grey lock icon): `CORE_PATH_FAILOVER`, `NODE_ISOLATION`, `NO_ACTION`. Changes persisted to `phase3-models/policy_overrides.json` and applied to the running corroborator immediately. |
+| **Overview** | The Q1/Q2/Q3 situation panels (above) over the live MPLS topology SVG. Animated red dashed links for active faults. Live air-gap compliance panel (signed probe results) + telemetry-source indicator (real exporter vs synthetic). Recent-alerts mini-feed. |
+| **Alerts** | Full scrollable history of every ACP: fault class, severity, confidence, **TTF lead time**, execution mode, rationale. Click any alert for the full Q1/Q2/Q3 incident report + remediation commands. |
+| **Ask Aether** | **Multi-turn** natural-language chat with Mistral 7B (offline). RAG retrieves runbook + incident context from ChromaDB before generating; follow-ups keep conversation context ("how do I fix it?"). Graceful offline RAG fallback if Ollama is down. |
+| **History** | Time-Travel slider scrubs backward through every ACP snapshot; re-renders the topology at that historical state with the event details. |
+| **Policy Matrix** | Live editor for the operator autonomy policy (see below). |
+| **Remediation Log** | Every action Aether took — auto-executed or operator-approved — with the **real command stdout/stderr** captured from `docker exec`. Honest about failures (e.g. "No such container" when the lab isn't running). |
+| **Validation** | The four Phase 6 scenarios with PASS/FAIL, measured **prediction lead time / MTTD**, and a "Run validation suite" button that launches `run_scenarios.py` and polls for completion. |
 
 ### Autonomy Policy Matrix
 
@@ -173,50 +212,38 @@ Every ACP that arrives (via WebSocket or poll) is captured as a topology snapsho
 
 ## Quick Start
 
+### One command (recommended)
+
 ```bash
-# Install PyTorch with CUDA 12.8 (RTX 4060) — skip second line for CPU-only
-pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
+bash phase4-llm/setup_llm.sh    # one-time, needs internet: Ollama + Mistral 7B + seed IKB
 
-# ── Phase 1: Deploy lab ─────────────────────────────────────────────
-cd phase1-simulation/topology
-sudo clab deploy -t chunk3.clab.yml
-sudo ./chunk3-setup.sh           # MPLS kernel modules + OSPF/LDP/BGP/VRF
-bash traffic_generator.sh &      # VoIP / DB / HTTP / SSH flows
+./run.sh                        # start everything (synthetic mode — no sudo, always works)
+#  → NOC Dashboard at http://localhost:8080
 
-# ── Phase 2: Telemetry ─────────────────────────────────────────────
-cd ../../
-python3 phase2-telemetry/exporter.py &          # binds port 8000
-cd phase2-telemetry && docker compose up -d     # Prometheus:9090, Grafana:3000
+./run.sh --clab                 # also deploy the real Containerlab topology + MPLS/VRF +
+                                #   SD-WAN overlay + QoS + Prometheus/Grafana (needs sudo +
+                                #   Docker + containerlab; falls back to synthetic if absent)
+./run.sh stop                   # stop all Aether processes
+```
 
-# ── Dataset: generate synthetic (no lab needed) ────────────────────
-python3 phase3-models/generate_dataset.py       # → phase3-models/dataset_large.csv (100k rows)
+`run.sh` starts: Ollama (LLM) · NetFlow simulator · traffic generator · fault streamer +
+inference · NOC dashboard. Logs land in `.logs/`.
 
-# ── OR collect real telemetry (requires lab running) ──────────────
-bash phase1-simulation/topology/continuous_fault_loop.sh &   # 30+ fault variants
-python3 phase3-models/data_collector.py --duration 14400 --output phase3-models/dataset_large.csv
+### Retraining / regenerating (optional)
 
-# ── Phase 3: Train ─────────────────────────────────────────────────
-python3 phase3-models/train_models.py \
-    --data phase3-models/dataset_large.csv \
-    --epochs 35 --seq-len 20 --batch-size 64
-python3 phase3-models/model_integrity.py --sign   # Ed25519 sign all models
-python3 phase3-models/model_integrity.py --verify # Verify signatures
+```bash
+# GPU PyTorch (RTX 4060). Skip the index-url for CPU-only.
+pip install torch --index-url https://download.pytorch.org/whl/cu128
 
-# ── Phase 3: Run inference ─────────────────────────────────────────
-python3 phase3-models/inference_engine.py --demo
-python3 phase3-models/aether_corroborator.py
+python3 phase3-models/generate_dataset.py --rows 100000   # → phase3-models/dataset_large.csv
+python3 phase3-models/train_models.py --data phase3-models/dataset_large.csv --epochs 60
+python3 phase3-models/train_models.py --regressor-only --data phase3-models/dataset_large.csv  # TTF only
+python3 phase3-models/model_integrity.py --sign           # Ed25519 sign all models
 
-# ── Phase 4: LLM Copilot (one-time setup, needs internet) ─────────
-bash phase4-llm/setup_llm.sh                     # install Ollama + pull Mistral 7B + seed IKB
-
-# After setup, all of these run 100% offline:
-python3 phase4-llm/ikb_manager.py --seed         # re-seed ChromaDB runbooks (idempotent)
-python3 phase4-llm/ikb_manager.py --ingest-acps  # sync incident log → ChromaDB
-python3 phase4-llm/nlq_interface.py              # interactive NLQ terminal
-
-# ── Phase 5: NOC Dashboard ─────────────────────────────────────────
-python3 phase5-dashboard/app.py                  # http://localhost:8080
+# Quantify lead time and run the validation suite
+python3 phase3-models/benchmark_harness.py
+python3 phase6-validation/run_scenarios.py --no-containerlab
 ```
 
 ---
@@ -261,12 +288,17 @@ On Fedora / modern Linux, `localhost` resolves to `::1` (IPv6) but the exporter 
 ```
 air-gapped-mpls-copilot/
 ├── README.md
+├── run.sh                           # one-command launcher (synthetic | --clab | stop)
 ├── requirements.txt
+├── GAP_ANALYSIS.md                  # problem-statement coverage audit (status)
+├── GAPS_AND_IDEAS.md                # forward-looking backlog (gaps + ideas)
 │
 ├── phase1-simulation/
 │   └── topology/
-│       ├── chunk3.clab.yml          # Containerlab topology (7 nodes)
-│       ├── chunk3-setup.sh          # MPLS kernel + FRR config (OSPF/LDP/BGP/VRF)
+│       ├── aether-lab.clab.yml      # canonical Containerlab topology (name: aether, 7 nodes)
+│       ├── chunk3-setup.sh          # MPLS kernel + FRR config (OSPF/LDP/BGP/VRF), LAB= override
+│       ├── overlay-setup.sh         # real GRE SD-WAN overlay PE1↔PE2 over the core
+│       ├── qos-setup.sh             # baseline HTB QoS on PE→CE egress (DSCP classifiers)
 │       ├── traffic_generator.sh     # VoIP + DB + HTTP + SSH flows via iperf3/hping3
 │       ├── fault_injector.py        # tc netem/tbf fault injection (5 types)
 │       ├── scenario_runner.sh       # Timed validation scenarios
@@ -317,17 +349,22 @@ air-gapped-mpls-copilot/
 │       └── congestion_saturation.md  # Rate limiting + QoS runbook
 │
 ├── phase5-dashboard/
-│   └── app.py                 # FastAPI NOC dashboard v5.0 — sidebar SPA, 14 endpoints, WebSocket
-│                              #   GET  /api/policy        — autonomy matrix
-│                              #   PUT  /api/policy        — live-edit (locked: CORE/NODE/NONE)
-│                              #   GET  /api/acps          — ACP history
-│                              #   GET  /api/explain/{id}  — Q1/Q2/Q3 + remediation commands
-│                              #   GET  /api/metrics/live  — link utilization random walk
-│                              #   GET  /api/tunnel-health — MPLS LSP health from graph model
-│                              #   GET  /api/netflow       — NetFlow summary bridge
-│                              #   GET  /api/compliance    — signed air-gap report
-│                              #   GET  /api/benchmark     — lead-time benchmark results
-│                              #   WS   /ws/alerts         — live ACP stream
+│   └── app.py                 # FastAPI NOC dashboard v5.0 — 7-view SPA, WebSocket
+│                              #   GET/PUT /api/policy      — autonomy matrix (live-edit)
+│                              #   GET  /api/acps           — ACP history
+│                              #   GET  /api/explain/{id}   — Q1/Q2/Q3 + remediation commands
+│                              #   POST /api/nlq            — multi-turn copilot (+ /api/nlq/reset)
+│                              #   GET  /api/metrics/live   — real exporter util + synthetic fallback
+│                              #   GET  /api/tunnel-health  — MPLS LSP health from graph model
+│                              #   GET  /api/netflow        — NetFlow summary bridge
+│                              #   GET  /api/compliance     — signed air-gap report (cached)
+│                              #   POST /api/execute-action — run + log a remediation
+│                              #   GET  /api/action-log     — remediation audit log
+│                              #   GET/POST /api/scenarios   — Phase 6 results + run trigger
+│                              #   WS   /ws/alerts          — live ACP stream
+│
+├── phase5-integration/
+│   └── README.md              # Phase 5 data-flow doc (ACP → explain → Q1/Q2/Q3)
 │
 ├── phase6-validation/
 │   └── run_scenarios.py       # PS-13 scenario validation suite (4 scenarios, --no-containerlab)
