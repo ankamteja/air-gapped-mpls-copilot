@@ -93,11 +93,12 @@ if [ "$NO_CLAB" -eq 0 ]; then
   sudo containerlab deploy  -t "$TOPOLOGY"
   info "Containerlab deployed"
 
-  # ── [2] Post-deploy MPLS/VRF/BGP live config + SD-WAN overlay ───────────────
-  log "[2/8] Applying MPLS / VRF / L3VPN config + SD-WAN overlay…"
+  # ── [2] Post-deploy MPLS/VRF/BGP + SD-WAN overlay + baseline QoS ─────────────
+  log "[2/8] Applying MPLS / VRF / L3VPN config + SD-WAN overlay + QoS…"
   pushd "$REPO/phase1-simulation/topology" > /dev/null
     LAB=aether bash chunk3-setup.sh
     LAB=aether bash overlay-setup.sh
+    LAB=aether bash qos-setup.sh
   popd > /dev/null
 
 else

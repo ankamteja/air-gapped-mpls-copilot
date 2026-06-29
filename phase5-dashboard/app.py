@@ -199,12 +199,86 @@ def _build_remediation(action: str, top_features: list) -> dict:
     }
 
 
-# Simulated live traffic state (random walk per link, updated on each /api/metrics/live call)
+# ── Live link telemetry ───────────────────────────────────────────────────────
+# Real topology links (match topology/aether-lab.clab.yml). Each entry maps the
+# link key to the (node, interface) that carries it and its capacity in bps.
+# /api/metrics/live prefers REAL counters scraped from the Prometheus exporter
+# (phase2-telemetry/exporter.py on :8000) and falls back to a synthetic random
+# walk when the exporter / Containerlab is not running. The response carries a
+# "source" field ("exporter" or "synthetic") so the dashboard never misleads.
 import random as _random
-_link_util: dict[str, float] = {
-    "pe1→p1": 14.0, "p1→pe2": 11.0, "pe1→ce-hub": 7.0,
-    "pe2→ce-branch1": 5.0, "pe2→ce-branch2": 8.0, "pe1→ce-dc": 17.0,
+
+EXPORTER_URL = "http://localhost:8000/metrics"
+
+# link_key -> (node, interface, capacity_bps) — interface that carries the link
+_LINK_TOPOLOGY = {
+    "pe1-p1":         ("pe1", "eth1", 10_000_000),
+    "p1-pe2":         ("p1",  "eth2", 10_000_000),
+    "pe1-ce-branch1": ("pe1", "eth2",  5_000_000),
+    "pe1-ce-hub":     ("pe1", "eth3",  5_000_000),
+    "pe2-ce-branch2": ("pe2", "eth2",  5_000_000),
+    "pe2-ce-dc":      ("pe2", "eth3",  5_000_000),
 }
+
+# link_key -> (graph node A, graph node B) — the two endpoints of the link
+_LINK_EDGES = {
+    "pe1-p1":         ("pe1", "p1"),
+    "p1-pe2":         ("p1",  "pe2"),
+    "pe1-ce-branch1": ("pe1", "ce-branch1"),
+    "pe1-ce-hub":     ("pe1", "ce-hub"),
+    "pe2-ce-branch2": ("pe2", "ce-branch2"),
+    "pe2-ce-dc":      ("pe2", "ce-dc"),
+}
+
+# Synthetic fallback state (random walk per link), seeded near a believable load.
+_link_util: dict[str, float] = {
+    "pe1-p1": 14.0, "p1-pe2": 11.0, "pe1-ce-branch1": 5.0,
+    "pe1-ce-hub": 7.0, "pe2-ce-branch2": 8.0, "pe2-ce-dc": 17.0,
+}
+
+# Previous exporter counter sample for byte-rate computation: (node,iface) -> (tx_bytes, ts)
+_exporter_prev: dict[tuple, tuple] = {}
+
+
+def _scrape_exporter_links() -> dict | None:
+    """
+    Pull real interface counters from the Prometheus exporter and convert tx_bytes
+    deltas into per-link utilization. Returns None if the exporter is unreachable
+    (caller falls back to synthetic).
+    """
+    import urllib.request
+    try:
+        with urllib.request.urlopen(EXPORTER_URL, timeout=1.5) as resp:
+            text = resp.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+
+    # Parse:  net_tx_bytes{node="pe1",interface="eth1"} 12345
+    import re
+    now = time.time()
+    cur = {}
+    for m in re.finditer(r'net_tx_bytes\{node="([^"]+)",interface="([^"]+)"\}\s+([0-9.]+)', text):
+        cur[(m.group(1), m.group(2))] = float(m.group(3))
+
+    if not cur:
+        return None
+
+    result = {}
+    for link, (node, iface, cap_bps) in _LINK_TOPOLOGY.items():
+        key = (node, iface)
+        tx = cur.get(key)
+        if tx is None:
+            continue
+        prev = _exporter_prev.get(key)
+        _exporter_prev[key] = (tx, now)
+        if prev is None:
+            continue
+        prev_tx, prev_ts = prev
+        dt = max(0.001, now - prev_ts)
+        bps = max(0.0, (tx - prev_tx) * 8.0 / dt)
+        util = min(100.0, bps / cap_bps * 100.0)
+        result[link] = {"util_pct": round(util, 1), "mbps": round(bps / 1e6, 2)}
+    return result or None
 
 
 # ── HTML Dashboard ────────────────────────────────────────────────────────────
@@ -581,6 +655,7 @@ svg.topo-svg{width:100%;height:100%}
           <div class="topo-card-header">
             <span class="card-title">Live Topology &mdash; MPLS L3VPN</span>
             <div style="display:flex;gap:16px;align-items:center;font-size:11px;color:#6b788e">
+              <span id="telemetry-source" style="font-family:'Consolas','Courier New',monospace;color:#7a8494">○ telemetry…</span>
               <span><span class="legend-line legend-ok" style="display:inline-block;width:14px;height:2px;margin-right:4px"></span>OK</span>
               <span><span class="legend-line legend-deg" style="display:inline-block;width:14px;height:3px;margin-right:4px"></span>Degraded</span>
               <span style="color:#3d4552">CE <span style="color:#3a6a3a">■</span> &nbsp; PE <span style="color:#3d6090">■</span> &nbsp; P <span style="color:#6050a0">■</span></span>
@@ -1014,12 +1089,12 @@ function _overlayMetrics(svgId, links) {
   if (!svg || !links || !Object.keys(links).length) return;
   svg.querySelectorAll('.metric-label').forEach(el => el.remove());
   const defs = {
-    'pe1→p1':          ['pe1','p1'],
-    'p1→pe2':          ['p1','pe2'],
-    'pe1→ce-hub':      ['pe1','ce-hub'],
-    'pe2→ce-branch1':  ['pe2','ce-branch1'],
-    'pe2→ce-branch2':  ['pe2','ce-branch2'],
-    'pe1→ce-dc':       ['pe1','ce-dc'],
+    'pe1-p1':         ['pe1','p1'],
+    'p1-pe2':         ['p1','pe2'],
+    'pe1-ce-branch1': ['pe1','ce-branch1'],
+    'pe1-ce-hub':     ['pe1','ce-hub'],
+    'pe2-ce-branch2': ['pe2','ce-branch2'],
+    'pe2-ce-dc':      ['pe2','ce-dc'],
   };
   for (const [key, [a, b]] of Object.entries(defs)) {
     const m = links[key];
@@ -1046,6 +1121,17 @@ async function pollLiveMetrics() {
     _overlayMetrics('topo-canvas', _liveMetrics);
     // Also update time-travel canvas if it is the current topology snapshot
     _overlayMetrics('tt-canvas', _liveMetrics);
+    // Honest source indicator: real exporter counters vs synthetic fallback
+    const srcEl = document.getElementById('telemetry-source');
+    if (srcEl) {
+      if (d.source === 'exporter') {
+        srcEl.textContent = '● live telemetry (FRR exporter)';
+        srcEl.style.color = '#3fb950';
+      } else {
+        srcEl.textContent = '○ synthetic telemetry (exporter offline)';
+        srcEl.style.color = '#7a8494';
+      }
+    }
   } catch(e) {}
 }
 pollLiveMetrics();
@@ -2256,15 +2342,27 @@ async def system_metrics():
 
 @app.get("/api/metrics/live")
 async def live_metrics():
-    """Simulated real-time link utilization for topology overlays. Updates via random walk."""
+    """
+    Real-time per-link utilization for the topology overlay.
+    Prefers REAL counters from the Prometheus exporter (:8000); falls back to a
+    synthetic random walk when the exporter / Containerlab is not running.
+    The 'source' field tells the dashboard which one it got.
+    """
+    real = _scrape_exporter_links()
+    if real:
+        return {"links": real, "source": "exporter", "ts": datetime.utcnow().isoformat()}
+
+    # Fallback: synthetic random walk (mbps derived from each link's real capacity)
     result = {}
     for link in list(_link_util):
         _link_util[link] = max(1.0, min(92.0, _link_util[link] + _random.gauss(0, 1.8)))
+        util = _link_util[link]
+        cap_mbps = _LINK_TOPOLOGY.get(link, (None, None, 10_000_000))[2] / 1e6
         result[link] = {
-            "util_pct": round(_link_util[link], 1),
-            "mbps":     round(_link_util[link] * 10, 1),
+            "util_pct": round(util, 1),
+            "mbps":     round(util / 100.0 * cap_mbps, 2),
         }
-    return {"links": result, "ts": datetime.utcnow().isoformat()}
+    return {"links": result, "source": "synthetic", "ts": datetime.utcnow().isoformat()}
 
 
 # ── Feedback ─────────────────────────────────────────────────────────────────
@@ -2358,14 +2456,12 @@ async def tunnel_health():
         sys.path.insert(0, os.path.join(REPO_ROOT, "..", "phase3-models"))
         from graph_model import ClonalGraphEngine
         engine = ClonalGraphEngine()
-        # Apply live link utilization as synthetic delay proxy
-        for link_key, util in _link_util.items():
-            parts = link_key.split("→")
-            if len(parts) == 2:
-                u, v = parts[0].strip(), parts[1].strip()
-                synth_delay = max(1, int(util / 10))  # util% → roughly delay ms
-                if engine.base_graph.has_edge(u, v):
-                    engine.base_graph[u][v]["delay"] = synth_delay
+        # Apply current link utilization as a delay proxy on the matching edge
+        for link_key, (u, v) in _LINK_EDGES.items():
+            util = _link_util.get(link_key, 0.0)
+            synth_delay = max(1, int(util / 10))  # util% → roughly delay ms
+            if engine.base_graph.has_edge(u, v):
+                engine.base_graph[u][v]["delay"] = synth_delay
         return {"tunnels": engine.get_tunnel_health(), "source": "graph_model"}
     except Exception as e:
         return {"tunnels": [], "error": str(e)}
