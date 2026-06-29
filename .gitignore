@@ -48,3 +48,9 @@ phase3-models/policy_overrides.json
 
 # Phase 6 validation run reports (timestamped, generated at runtime)
 phase6-validation/report_*.json
+
+# run.sh process logs (generated at runtime)
+.logs/
+
+# Editor / office lock files
+.~lock.*#
