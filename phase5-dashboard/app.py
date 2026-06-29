@@ -2589,9 +2589,9 @@ async def explain_acp(acp_id: str):
 _gpu_peak_window: list[float] = []  # rolling 60-second peak tracker (15 samples × 4s)
 _GPU_PEAK_MAX = 15
 
-@app.get("/api/system-metrics")
-async def system_metrics():
-    """Returns CPU, RAM, GPU, and VRAM usage for the system metrics bar."""
+def _collect_system_metrics() -> dict:
+    """Blocking system-metrics collection (psutil interval + nvidia-smi). Runs in
+    an executor so it never stalls the async event loop under concurrent polling."""
     import subprocess as _sp
     result: dict = {}
     try:
@@ -2628,6 +2628,12 @@ async def system_metrics():
     return result
 
 
+@app.get("/api/system-metrics")
+async def system_metrics():
+    """Returns CPU, RAM, GPU, and VRAM usage for the system metrics bar."""
+    return await asyncio.get_event_loop().run_in_executor(None, _collect_system_metrics)
+
+
 @app.get("/api/metrics/live")
 async def live_metrics():
     """
@@ -2636,7 +2642,7 @@ async def live_metrics():
     synthetic random walk when the exporter / Containerlab is not running.
     The 'source' field tells the dashboard which one it got.
     """
-    real = _scrape_exporter_links()
+    real = await asyncio.get_event_loop().run_in_executor(None, _scrape_exporter_links)
     if real:
         return {"links": real, "source": "exporter", "ts": datetime.utcnow().isoformat()}
 
