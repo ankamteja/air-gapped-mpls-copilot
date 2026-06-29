@@ -46,7 +46,9 @@ FRR_NODES = {
 }
 
 def _build_header():
-    cols = ["timestamp", "fault_label", "fault_location"]
+    # time_to_breach (col index 3) is a regression target, NOT a feature.
+    # It is the lead time in seconds until the upcoming SLA breach (fault plateau).
+    cols = ["timestamp", "fault_label", "fault_location", "time_to_breach"]
     # cumulative counters
     for node in NODES:
         cols.append(f"{node}_container_running")
@@ -96,6 +98,18 @@ FRR_HEALTHY = {
 }
 
 DT_SECONDS = 2  # sample interval matches real collector
+
+# Time-to-breach (lead-time) regression target.
+#
+# An SLA breach is a *sustained* performance violation, not the instant a metric
+# first moves. So "breach" is defined as the fault having been active through its
+# onset ramp AND sustained for SLA_SUSTAIN_SAMPLES into the plateau. This means
+# the onset ramp and the early plateau — where the fault is clearly detectable and
+# classifiable — still carry a positive lead time counting down to the breach.
+# time_to_breach hits 0 at the breach and stays 0 through the rest of the episode.
+# Far from any fault it saturates at MAX_LEAD_SECONDS (sentinel: nothing imminent).
+MAX_LEAD_SECONDS  = 300.0
+SLA_SUSTAIN_SAMPLES = 20  # a fault must persist this many samples (×2s = 40s) to breach SLA
 
 # ── Fault intensity profiles ──────────────────────────────────────────────────
 
@@ -597,9 +611,55 @@ def _build_episode_plan(target_rows: int, seed: int = 0) -> list:
 
 # ── Main generator ────────────────────────────────────────────────────────────
 
+def _compute_ttf_array(plan: list) -> np.ndarray:
+    """
+    Build the per-sample time_to_breach (lead-time) target over the full plan span.
+
+    For each fault episode the breach index is the plateau start
+    (episode_start + onset). Onset-ramp rows count down to it; plateau/recovery
+    rows sit at 0 (already breached). Preceding healthy rows count down to the
+    next upcoming breach, capped at MAX_LEAD_SECONDS.
+    """
+    import bisect
+    total_span = sum(d for _, _, d in plan)
+    ttf = np.full(total_span, MAX_LEAD_SECONDS, dtype=np.float32)
+    active = np.zeros(total_span, dtype=bool)
+    breach_of = np.full(total_span, -1, dtype=np.int64)
+    breaches = []
+
+    idx = 0
+    for fault_class, profile, duration in plan:
+        start, end = idx, idx + duration
+        if fault_class != "Healthy" and duration >= 3:
+            if fault_class == "flap":
+                onset = 2
+            else:
+                onset = max(3, int(duration * 0.15))
+            # breach = plateau start + sustained-violation window (capped at episode end)
+            breach = min(start + onset + SLA_SUSTAIN_SAMPLES, end - 1)
+            breaches.append(breach)
+            active[start:end] = True
+            breach_of[start:end] = breach
+        idx = end
+
+    breaches.sort()
+    for i in range(total_span):
+        if active[i]:
+            # onset ramp counts down to breach; plateau/recovery rest at 0
+            ttf[i] = max(0, breach_of[i] - i) * DT_SECONDS
+        else:
+            j = bisect.bisect_left(breaches, i)
+            if j < len(breaches):
+                ttf[i] = min(MAX_LEAD_SECONDS, (breaches[j] - i) * DT_SECONDS)
+            else:
+                ttf[i] = MAX_LEAD_SECONDS
+    return ttf
+
+
 def generate(target_rows: int, output_path: str, verbose: bool = True):
     plan = _build_episode_plan(target_rows)
     total_planned = sum(d for _, _, d in plan)
+    ttf_arr = _compute_ttf_array(plan)
 
     if verbose:
         print(f"[*] Target rows: {target_rows:,}")
@@ -628,6 +688,7 @@ def generate(target_rows: int, output_path: str, verbose: bool = True):
                     frr.step(sample_idx + i)
                     d   = _diurnal_factor(sample_idx + i)
                     row = _build_row(ts, "Healthy", "", states, frr, d, {})
+                    row.insert(3, round(float(ttf_arr[sample_idx + i]), 1))
                     batch.append(row)
                     ts += timedelta(seconds=DT_SECONDS)
                 sample_idx += duration
@@ -661,6 +722,7 @@ def generate(target_rows: int, output_path: str, verbose: bool = True):
 
                     row = _build_row(ts, fault_class, affected_node, states, frr,
                                      d_factor, node_ov)
+                    row.insert(3, round(float(ttf_arr[sample_idx + i]), 1))
                     batch.append(row)
                     ts += timedelta(seconds=DT_SECONDS)
                 sample_idx += duration

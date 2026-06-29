@@ -35,24 +35,101 @@ CYCLE = ["flap", "loss", "rate", "latency", "corrupt", "Healthy",
          "rate", "flap", "Healthy", "corrupt", "loss", "rate"]
 
 
+# Window length used when indexing precursor pools (max of any engine seq_len).
+_POOL_MIN_END = 32
+
+
 def load_dataset_by_class(path: str):
+    """
+    Load the dataset preserving row order, and pre-index window END positions
+    into three pools per fault class so the streamer can feed PRECURSOR windows
+    (where the fault is detectable but has not yet breached) and obtain a real
+    lead time, instead of always sampling fully-breached plateau windows.
+
+      onset   — fault-labeled rows with time_to_breach > 0 (rising, not breached)
+                → classifier names the fault AND regressor reports lead time
+      plateau — fault-labeled rows with time_to_breach == 0 (already breached)
+      healthy — Healthy rows far from any fault (quiet heartbeat)
+
+    Returns (pools, feature_cols) where pools is consumed by sample_window().
+    """
     print(f"[*] Loading dataset: {path}")
     df = pd.read_csv(path)
     feature_cols = [c for c in df.columns
-                    if c not in ("fault_label", "fault_location", "timestamp")]
-    groups = {}
-    for label in FAULT_CLASSES:
-        rows = df[df["fault_label"] == label][feature_cols]
-        if len(rows):
-            groups[label] = rows.reset_index(drop=True)
-            print(f"  {label:10s}: {len(rows):5d} rows")
-    return groups, feature_cols
+                    if c not in ("fault_label", "fault_location", "timestamp", "time_to_breach")]
+
+    has_ttf = "time_to_breach" in df.columns
+    fl = df["fault_label"].values
+    tb = df["time_to_breach"].values if has_ttf else None
+
+    onset   = {cls: [] for cls in FAULT_TYPES}
+    plateau = {cls: [] for cls in FAULT_TYPES}
+    healthy = []
+
+    for j in range(_POOL_MIN_END, len(df)):
+        lbl = fl[j]
+        if lbl == "Healthy":
+            # quiet heartbeat: far from any upcoming fault
+            if tb is None or tb[j] > 150:
+                healthy.append(j)
+        elif lbl in onset:
+            if tb is not None and tb[j] > 0:
+                onset[lbl].append((j, float(tb[j])))  # (end_idx, lead_time_sec)
+            else:
+                plateau[lbl].append(j)   # already breached
+
+    pools = {
+        "_df":      df[feature_cols].reset_index(drop=True),
+        "_onset":   onset,
+        "_plateau": plateau,
+        "_healthy": healthy,
+    }
+    for cls in FAULT_TYPES:
+        print(f"  {cls:10s}: onset={len(onset[cls]):5d}  plateau={len(plateau[cls]):5d}")
+    print(f"  {'Healthy':10s}: quiet={len(healthy):5d}")
+    return pools, feature_cols
 
 
-def sample_window(groups, feature_cols, label, seq_len=20):
-    df = groups.get(label, groups["Healthy"])
-    start = random.randint(0, max(0, len(df) - seq_len - 1))
-    window = df.iloc[start:start + seq_len]
+# Preferred live lead-time band (seconds). Onset windows in this range give the
+# clearest "detected with N seconds before breach" story. Faults with abrupt
+# onsets (e.g. flap) simply have no rows here and fall back to their full pool.
+_LEAD_BAND = (5.0, 90.0)
+
+
+def sample_window(pools, feature_cols, label, seq_len=20):
+    """
+    Return a seq_len window of feature dicts ending at a position chosen from the
+    pool appropriate for `label`. For faults we prefer onset-ramp windows (so the
+    ACP carries a real lead time) and occasionally a plateau window (already
+    breached, TTF≈0) for realistic variety.
+    """
+    df = pools["_df"]
+    seq_len = min(seq_len, _POOL_MIN_END)
+
+    if label == "Healthy":
+        candidates = pools["_healthy"]
+    else:
+        onset   = pools["_onset"].get(label, [])      # list of (j, lead_sec)
+        plateau = pools["_plateau"].get(label, [])    # list of j
+        # Prefer onset windows inside the lead-time sweet spot, then any onset,
+        # then plateau (already breached). 15% of the time pick a plateau window
+        # for realistic variety (the system catching a fault after it breached).
+        banded = [j for (j, lead) in onset if _LEAD_BAND[0] <= lead <= _LEAD_BAND[1]]
+        if banded and (not plateau or random.random() < 0.85):
+            candidates = banded
+        elif onset and (not plateau or random.random() < 0.85):
+            candidates = [j for (j, _) in onset]
+        elif plateau:
+            candidates = plateau
+        else:
+            candidates = [j for (j, _) in onset] or pools["_healthy"]
+
+    if not candidates:
+        candidates = pools["_healthy"] or [len(df) - 1]
+
+    j = random.choice(candidates)
+    j = max(seq_len, min(j, len(df)))
+    window = df.iloc[j - seq_len:j]
     return [{col: float(row[col]) for col in feature_cols} for _, row in window.iterrows()]
 
 

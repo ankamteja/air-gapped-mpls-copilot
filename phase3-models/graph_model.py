@@ -56,7 +56,10 @@ class ClonalGraphEngine:
             
         # Add bidirectional links with capacity (bps), current delay (ms), and cost
         # We model the primary MPLS core links and access links.
-        # We also model a backup SD-WAN Tunnel link directly between PE1 and PE2 (representing public internet overlay).
+        # We also model the SD-WAN overlay as a high-cost backup edge between PE1
+        # and PE2. This is physically backed by the GRE overlay tunnel built in
+        # topology/overlay-setup.sh (gre-sdwan, 172.16.99.0/30), which rides over
+        # the OSPF-routed core PE1→P1→PE2 — there is no direct PE1↔PE2 wire.
         links = [
             # Core primary paths
             ("pe1", "p1", {"capacity": 10_000_000, "delay": 5, "cost": 10, "is_backup": False}),

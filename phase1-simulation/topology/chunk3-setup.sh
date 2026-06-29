@@ -15,8 +15,8 @@
 # =============================================================================
 set -euo pipefail
 
-LAB=chunk3
-P() { echo "clab-${LAB}-$1"; }     # container-name helper:  $(P pe1) -> clab-chunk3-pe1
+LAB="${LAB:-chunk3}"               # override with LAB=aether for the canonical topology
+P() { echo "clab-${LAB}-$1"; }     # container-name helper:  $(P pe1) -> clab-${LAB}-pe1
 
 # -----------------------------------------------------------------------------
 echo "==> [1/6] Host: load MPLS kernel modules"

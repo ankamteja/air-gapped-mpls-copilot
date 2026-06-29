@@ -44,11 +44,14 @@ HIDDEN_DIM = 128  # Up from 64 — RTX 4060 8GB can handle it
 
 def load_dataset(csv_path):
     print(f"[*] Loading dataset from {csv_path}...")
-    rows, labels = [], []
+    rows, labels, ttf_vals = [], [], []
     with open(csv_path, 'r') as f:
         reader = csv.reader(f)
         header = next(reader)
-        feat_start = 3
+        # Datasets generated after the lead-time fix carry a "time_to_breach"
+        # regression target at column 3. Older datasets do not — stay compatible.
+        has_ttf = len(header) > 3 and header[3] == "time_to_breach"
+        feat_start = 4 if has_ttf else 3
         columns = header[feat_start:]
         num_features = len(columns)
 
@@ -58,6 +61,11 @@ def load_dataset(csv_path):
             fault_label = row[1]
             label_int = FAULT_CLASSES.get(fault_label, 0)
             labels.append(label_int)
+            if has_ttf:
+                try:
+                    ttf_vals.append(float(row[3]))
+                except (ValueError, IndexError):
+                    ttf_vals.append(0.0)
             features = []
             for val in row[feat_start:feat_start + num_features]:
                 try:
@@ -70,10 +78,13 @@ def load_dataset(csv_path):
 
     X = np.array(rows, dtype=np.float32)
     y = np.array(labels, dtype=np.int64)
+    ttf = np.array(ttf_vals, dtype=np.float32) if has_ttf else None
     print(f"    Loaded {X.shape[0]} samples × {X.shape[1]} features")
+    if ttf is not None:
+        print(f"    time_to_breach target present: min={ttf.min():.0f}s max={ttf.max():.0f}s mean={ttf.mean():.1f}s")
     dist = {k: int((y == v).sum()) for k, v in FAULT_CLASSES.items()}
     print(f"    Class distribution: {dist}")
-    return X, y, columns
+    return X, y, columns, ttf
 
 
 def normalize(X):
@@ -286,17 +297,29 @@ def train_classifier(X_all, y_all, seq_len, epochs, batch_size, lr):
     return model
 
 
-def train_regressor(X_all, y_all, seq_len, epochs, batch_size, lr):
+def train_regressor(X_all, y_all, seq_len, epochs, batch_size, lr, ttf_col=None):
     print(f"\n{'='*60}")
     print(f"[*] Training Time-To-Failure Regressor, hidden={HIDDEN_DIM}")
 
     num_features = X_all.shape[1]
-    ttf_labels = np.full(len(y_all), 300.0, dtype=np.float32)
-    next_fault_at = len(y_all) + 300
-    for i in range(len(y_all) - 1, -1, -1):
-        if y_all[i] != 0:
-            next_fault_at = i
-        ttf_labels[i] = min(float(next_fault_at - i), 300.0)
+    if ttf_col is not None:
+        # Use the generator's lead-time target: seconds until the upcoming SLA
+        # breach (fault plateau), counting down through the pre-fault healthy
+        # window and the onset ramp. This is the real "lead time" signal.
+        ttf_labels = ttf_col.astype(np.float32)
+        print(f"    Using dataset time_to_breach target — "
+              f"median={np.median(ttf_labels):.0f}s, "
+              f"pct>0={(ttf_labels > 0).mean()*100:.0f}%")
+    else:
+        # Backward-compatible fallback for datasets without time_to_breach:
+        # distance to the next fault row (collapses to ~0 on dense-fault data).
+        print("    [!] No time_to_breach column — deriving TTF from label gaps (legacy)")
+        ttf_labels = np.full(len(y_all), 300.0, dtype=np.float32)
+        next_fault_at = len(y_all) + 300
+        for i in range(len(y_all) - 1, -1, -1):
+            if y_all[i] != 0:
+                next_fault_at = i
+            ttf_labels[i] = min(float(next_fault_at - i), 300.0)
 
     X_seq, ttf_seq = create_sequences(X_all, ttf_labels, seq_len)
 
@@ -435,6 +458,7 @@ def main():
     parser.add_argument("--synthetic", action="store_true", help="Generate and train on synthetic data")
     parser.add_argument("--no-augment", action="store_true", help="Skip minority class augmentation")
     parser.add_argument("--classifier-only", action="store_true", help="Retrain only the classifier (skip autoencoder + regressor)")
+    parser.add_argument("--regressor-only", action="store_true", help="Retrain only the TTF regressor (skip autoencoder + classifier)")
     args = parser.parse_args()
 
     data_path = args.data
@@ -443,7 +467,7 @@ def main():
             print(f"[!] Dataset not found. Generating synthetic data...")
         generate_synthetic_dataset(data_path)
 
-    X, y, columns = load_dataset(data_path)
+    X, y, columns, ttf_col = load_dataset(data_path)
 
     if len(X) < args.seq_len + 10:
         print(f"[-] Not enough data ({len(X)} samples). Need {args.seq_len + 10} minimum.")
@@ -462,6 +486,12 @@ def main():
         print(f"    GPU: {torch.cuda.get_device_name(0)}")
         print(f"    VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
+    if args.regressor_only:
+        # Retrain only the TTF regressor (e.g. after the lead-time label fix)
+        train_regressor(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr, ttf_col=ttf_col)
+        print(f"\n[+] Regressor retrained → {SAVE_DIR}/regressor.pt")
+        return
+
     if not args.classifier_only:
         # 1. Autoencoder — healthy data only
         healthy_mask = (y == 0)
@@ -476,7 +506,7 @@ def main():
 
     if not args.classifier_only:
         # 3. TTF Regressor
-        train_regressor(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr)
+        train_regressor(X_norm, y, args.seq_len, args.epochs, args.batch_size, args.lr, ttf_col=ttf_col)
 
     print(f"\n{'='*60}")
     print(f"[+] All models saved to {SAVE_DIR}/")

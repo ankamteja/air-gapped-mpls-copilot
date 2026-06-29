@@ -68,9 +68,11 @@ def _load_csv(path: str):
         selected_indices = [col_idx[c] for c in trained_cols if c in col_idx]
         columns = [trained_cols[i] for i, c in enumerate(trained_cols) if c in col_idx]
     else:
-        # Fallback: skip timestamp, fault_label, fault_location (first 3 cols)
-        selected_indices = list(range(3, len(header)))
-        columns = header[3:]
+        # Fallback: skip meta cols (timestamp, fault_label, fault_location,
+        # and time_to_breach if present — it is a target, not a feature)
+        meta = {"timestamp", "fault_label", "fault_location", "time_to_breach"}
+        selected_indices = [i for i, c in enumerate(header) if c not in meta]
+        columns = [header[i] for i in selected_indices]
 
     with open(path) as f:
         reader = csv.reader(f)
