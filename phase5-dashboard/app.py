@@ -1484,7 +1484,7 @@ async function approveCurrentAcp() {
       const rows = result.steps.map(s => {
         const icon = s.skipped ? '—' : s.success ? '✓' : '✗';
         const color = s.skipped ? '#4a5566' : s.success ? '#57a84a' : '#d05a52';
-        const out = (s.stdout || '') + (s.stderr ? '\n' + s.stderr : '');
+        const out = (s.stdout || '') + (s.stderr ? '\\n' + s.stderr : '');
         return `<div style="margin-bottom:12px;border-left:2px solid ${color};padding-left:10px">
           <div style="font-size:10px;color:${color};margin-bottom:4px">${icon} ${s.description || s.command}</div>
           <code style="display:block;font-size:10px;color:#6d7989;background:#111217;padding:6px 8px;border-radius:2px;white-space:pre-wrap;word-break:break-all">${s.command}</code>
@@ -1565,7 +1565,7 @@ async function loadActionLog() {
         if (s.skipped) return '';
         const icon = s.success ? '✓' : '✗';
         const c = s.success ? '#57a84a' : '#d05a52';
-        const out = ((s.stdout||'') + (s.stderr ? '\n' + s.stderr : '')).trim().slice(0,500);
+        const out = ((s.stdout||'') + (s.stderr ? '\\n' + s.stderr : '')).trim().slice(0,500);
         return `<tr>
           <td style="padding:6px 10px;border-bottom:1px solid #22262b;color:${c};font-family:monospace;font-size:10px;width:14px">${icon}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #22262b;font-size:10px;color:#6d7989">${s.description||''}</td>

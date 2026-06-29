@@ -32,8 +32,9 @@ dataset_v2.csv
 # LLM vector database (large, runtime-generated)
 phase4-llm/chroma_db/
 
-# IKB runtime data
+# Runtime audit logs
 phase3-models/ikb/incidents.jsonl
+phase3-models/action_log.jsonl
 
 # Telemetry data
 prometheus-data/
