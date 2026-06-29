@@ -563,6 +563,10 @@ svg.topo-svg{width:100%;height:100%}
       <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="1"/><line x1="5" y1="6" x2="11" y2="6"/><line x1="5" y1="9" x2="11" y2="9"/><line x1="5" y1="12" x2="8" y2="12"/></svg></span>
       <span class="nav-label">Remediation Log</span>
     </div>
+    <div class="nav-item" data-nav="validation" onclick="showPanel('validation')">
+      <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3 3 7-7"/><path d="M2 13.5h12"/></svg></span>
+      <span class="nav-label">Validation</span>
+    </div>
 
     <div id="sidebar-footer">
       <div class="stat-row" style="border:0;margin:0;padding:2px 0">
@@ -745,12 +749,16 @@ svg.topo-svg{width:100%;height:100%}
         </div>
 
         <div class="card">
+          <div class="card-header">
+            <span class="card-title">Conversation <span style="color:#3d4552;text-transform:none;font-weight:400" id="nlq-turns"></span></span>
+            <button class="quick-btn" onclick="nlqReset()">+ New conversation</button>
+          </div>
           <div class="card-body">
-            <div style="display:flex;gap:10px;margin-bottom:14px">
-              <input id="nlq-input" placeholder="e.g. What will fail next?  /  How do I fix BGP flap on pe1?" onkeydown="if(event.key==='Enter')nlqSend()" style="flex:1">
+            <div id="nlq-output" data-empty="1" style="min-height:120px;max-height:380px;overflow-y:auto;margin-bottom:14px">Ask a question or use a quick query below. Follow-ups keep context — e.g. ask "what fails next?" then "how do I fix it?"</div>
+            <div style="display:flex;gap:10px">
+              <input id="nlq-input" placeholder="Ask… (follow-ups remember the conversation)" onkeydown="if(event.key==='Enter')nlqSend()" style="flex:1">
               <button id="nlq-btn" onclick="nlqSend()">Ask</button>
             </div>
-            <div id="nlq-output" style="min-height:120px">Type a question above or use a quick query below.</div>
           </div>
         </div>
 
@@ -937,6 +945,34 @@ svg.topo-svg{width:100%;height:100%}
       </div>
     </div>
 
+    <!-- ── VIEW: Scenario Validation (Phase 6) ───────────────────── -->
+    <div class="view" id="view-validation">
+      <div class="page-wrap">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Scenario Validation &mdash; Phase 6</div>
+            <div class="page-subtitle">The four problem-statement scenarios, with measured prediction lead time and detection latency</div>
+          </div>
+          <div class="page-actions">
+            <span id="validation-status" style="font-size:11px;color:#6d7989;font-family:monospace"></span>
+            <button class="matrix-save-btn" id="validation-run-btn" onclick="runValidation()">Run validation suite</button>
+          </div>
+        </div>
+
+        <div class="card" style="border-left:2px solid #4a5566">
+          <div class="card-body" style="font-size:11px;color:#4a5566;line-height:1.65;padding:12px 16px">
+            Runs <code style="color:#5189c8">phase6-validation/run_scenarios.py --no-containerlab</code> against the live
+            inference engine and dashboard. Each scenario injects a fault and measures how early Aether predicts it.
+            Results persist to a signed report and are shown below.
+          </div>
+        </div>
+
+        <div id="validation-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="color:#4a5566;font-size:12px;padding:20px 0">Loading validation results&hellip;</div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- #main-content -->
 
   <!-- ── Incident Modal ─────────────────────────────────────────── -->
@@ -972,6 +1008,67 @@ function showPanel(name) {
   if (name === 'matrix') loadMatrix();
   if (name === 'logs') loadActionLog();
   if (name === 'timetravel') refreshTTCanvas();
+  if (name === 'validation') loadValidation();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario Validation (Phase 6)
+// ─────────────────────────────────────────────────────────────────────────────
+let _validationPoll = null;
+
+async function loadValidation() {
+  const grid = document.getElementById('validation-grid');
+  try {
+    const r = await fetch('/api/scenarios');
+    const d = await r.json();
+    const statusEl = document.getElementById('validation-status');
+    const btn = document.getElementById('validation-run-btn');
+    if (d.running) {
+      if (statusEl) statusEl.textContent = '● running…';
+      if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+      if (!_validationPoll) _validationPoll = setInterval(loadValidation, 4000);
+    } else {
+      if (statusEl) statusEl.textContent = d.report_time
+        ? 'last run ' + (d.report_time || '').replace('T', ' ').slice(0, 19) + ' UTC'
+        : 'never run';
+      if (btn) { btn.disabled = false; btn.textContent = 'Run validation suite'; }
+      if (_validationPoll) { clearInterval(_validationPoll); _validationPoll = null; }
+    }
+
+    grid.innerHTML = (d.scenarios || []).map(s => {
+      const state = s.passed === true ? 'PASS' : s.passed === false ? 'FAIL' : '—';
+      const color = s.passed === true ? '#57a84a' : s.passed === false ? '#d05a52' : '#4a5566';
+      const lead = s.lead_seconds != null
+        ? `<div style="font-size:24px;font-weight:700;color:${color};font-family:monospace;line-height:1">${s.lead_seconds.toFixed(0)}s</div>
+           <div style="font-size:10px;color:#3d4552;font-family:monospace">prediction lead time before SLA breach</div>`
+        : s.mttd_seconds != null
+        ? `<div style="font-size:24px;font-weight:700;color:${color};font-family:monospace;line-height:1">${s.mttd_seconds.toFixed(0)}s</div>
+           <div style="font-size:10px;color:#3d4552;font-family:monospace">mean time to detect</div>`
+        : `<div style="font-size:13px;color:#4a5566">${s.has_result ? 'completed' : 'not yet run'}</div>`;
+      return `<div class="card" style="border-top:2px solid ${color}">
+        <div class="card-header" style="padding:8px 14px">
+          <span style="font-size:11px;font-weight:600;color:#c4c9d4">Scenario ${s.scenario} — ${s.name}</span>
+          <span style="font-size:10px;font-weight:700;color:${color};font-family:monospace">${state}</span>
+        </div>
+        <div class="card-body" style="padding:14px 16px">
+          ${lead}
+          <div style="font-size:11px;color:#6d7989;line-height:1.5;margin-top:10px">${s.description}</div>
+          ${s.duration_s != null ? `<div style="font-size:10px;color:#3d4552;font-family:monospace;margin-top:6px">ran in ${s.duration_s}s</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = '<div style="color:#d05a52;font-size:12px;padding:20px 0">Failed to load: ' + e + '</div>';
+  }
+}
+
+async function runValidation() {
+  const btn = document.getElementById('validation-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+  try {
+    await fetch('/api/scenarios/run', {method: 'POST'});
+  } catch(e) {}
+  setTimeout(loadValidation, 1000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1626,22 +1723,62 @@ setInterval(pollAlerts, 4000);
 loadMatrix();  // Pre-load policy so the matrix is ready before user navigates to it
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NLQ Copilot
+// NLQ Copilot — multi-turn conversation
 // ─────────────────────────────────────────────────────────────────────────────
-async function nlqSend() {
-  const q = document.getElementById('nlq-input').value.trim();
-  if (!q) return;
+let _nlqSession = null;
+
+function _nlqBubble(role, text) {
   const out = document.getElementById('nlq-output');
-  out.textContent = '⏳ Thinking…';
+  // Clear the placeholder on first message
+  if (out.dataset.empty === '1') { out.innerHTML = ''; out.dataset.empty = '0'; }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-bottom:12px';
+  const who = document.createElement('div');
+  who.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;font-family:monospace;color:' +
+    (role === 'user' ? '#5189c8' : '#57a84a');
+  who.textContent = role === 'user' ? 'You' : 'Aether';
+  const body = document.createElement('div');
+  body.style.cssText = 'font-size:12px;line-height:1.65;white-space:pre-wrap;color:' +
+    (role === 'user' ? '#c4c9d4' : '#a8b0bd');
+  body.textContent = text;
+  wrap.appendChild(who); wrap.appendChild(body);
+  out.appendChild(wrap);
+  out.scrollTop = out.scrollHeight;
+  return body;
+}
+
+async function nlqSend() {
+  const input = document.getElementById('nlq-input');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  _nlqBubble('user', q);
+  const thinking = _nlqBubble('assistant', '⏳ Thinking…');
   try {
     const r = await fetch('/api/nlq', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: q}),
+      body: JSON.stringify({question: q, session_id: _nlqSession}),
     });
     const d = await r.json();
-    out.textContent = d.answer || d.error || 'No response';
-  } catch(e) { out.textContent = 'Error: ' + e; }
+    _nlqSession = d.session_id || _nlqSession;
+    thinking.textContent = d.answer || d.error || 'No response';
+    const tc = document.getElementById('nlq-turns');
+    if (tc) tc.textContent = d.turns ? d.turns + ' turn' + (d.turns === 1 ? '' : 's') : '';
+  } catch(e) { thinking.textContent = 'Error: ' + e; }
+}
+
+async function nlqReset() {
+  if (_nlqSession) {
+    try { await fetch('/api/nlq/reset', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:'', session_id:_nlqSession})}); } catch(e) {}
+  }
+  _nlqSession = null;
+  const out = document.getElementById('nlq-output');
+  out.innerHTML = 'New conversation — ask a question or use a quick query below.';
+  out.dataset.empty = '1';
+  const tc = document.getElementById('nlq-turns');
+  if (tc) tc.textContent = '';
 }
 
 function quickQ(q) {
@@ -2165,6 +2302,91 @@ async def topology():
     return {"nodes": nodes, "edges": edges}
 
 
+# ── Phase 6 scenario validation ───────────────────────────────────────────────
+VALIDATION_DIR = os.path.join(REPO_ROOT, "..", "phase6-validation")
+_scenario_run = {"running": False, "started": None}
+
+SCENARIO_META = {
+    1: ("Gradual link degradation", "Progressive latency buildup on a hub-spoke link — measures prediction lead time before SLA breach."),
+    2: ("BGP route flap + reroute cascade", "Route flap with downstream reroute — measures mean time to detect (MTTD)."),
+    3: ("Intermittent MPLS failure", "MPLS underlay flaps with tunnel degradation — verifies the platform stays responsive."),
+    4: ("Controller misconfiguration / policy drift", "Policy drift detection + autonomy gate verification with rollback."),
+}
+
+
+def _latest_report() -> dict | None:
+    import glob
+    files = sorted(glob.glob(os.path.join(VALIDATION_DIR, "report_*.json")))
+    if not files:
+        return None
+    try:
+        with open(files[-1]) as f:
+            data = json.load(f)
+        data["_report_file"] = os.path.basename(files[-1])
+        return data
+    except Exception:
+        return None
+
+
+@app.get("/api/scenarios")
+async def scenarios():
+    """Return the latest Phase 6 validation report + run status, annotated with metadata."""
+    report = _latest_report()
+    results = (report or {}).get("results", [])
+    by_id = {r.get("scenario"): r for r in results}
+    cards = []
+    for sid in (1, 2, 3, 4):
+        name, desc = SCENARIO_META[sid]
+        r = by_id.get(sid, {})
+        cards.append({
+            "scenario": sid, "name": name, "description": desc,
+            "passed": r.get("passed"),
+            "lead_seconds": r.get("lead_seconds"),
+            "mttd_seconds": r.get("mttd_seconds"),
+            "duration_s": r.get("duration_s"),
+            "has_result": bool(r),
+        })
+    return {
+        "scenarios": cards,
+        "running": _scenario_run["running"],
+        "report_file": (report or {}).get("_report_file"),
+        "report_time": (report or {}).get("timestamp"),
+    }
+
+
+@app.post("/api/scenarios/run")
+async def scenarios_run():
+    """Launch the Phase 6 validation suite in the background (synthetic mode)."""
+    if _scenario_run["running"]:
+        return {"status": "already_running"}
+
+    import subprocess
+    script = os.path.join(VALIDATION_DIR, "run_scenarios.py")
+    if not os.path.exists(script):
+        return {"status": "error", "detail": "run_scenarios.py not found"}
+
+    _scenario_run["running"] = True
+    _scenario_run["started"] = datetime.utcnow().isoformat()
+
+    async def _run():
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [sys.executable, script, "--no-containerlab"],
+                    cwd=os.path.join(REPO_ROOT, ".."),
+                    capture_output=True, text=True, timeout=600,
+                ),
+            )
+        except Exception:
+            pass
+        finally:
+            _scenario_run["running"] = False
+
+    asyncio.create_task(_run())
+    return {"status": "started"}
+
+
 def _load_acp_files(limit: int = 50) -> list[dict]:
     """Load full ACP JSON files from acp_logs/, sorted by timestamp, newest-last."""
     import glob
@@ -2245,18 +2467,45 @@ async def update_policy(req: PolicyUpdate):
 
 class NLQRequest(BaseModel):
     question: str
+    session_id: str | None = None
+
+
+# In-memory multi-turn conversation store: session_id -> list[{"role","content"}]
+_nlq_sessions: dict[str, list] = {}
+_NLQ_MAX_TURNS = 16  # keep the last N turns per session
 
 
 @app.post("/api/nlq")
 async def nlq(req: NLQRequest):
+    import uuid
     copilot = _get_copilot()
     if copilot is None:
         return {"answer": "LLM copilot unavailable. Check Ollama installation.", "source": "error"}
+
+    session_id = req.session_id or uuid.uuid4().hex[:12]
+    history = _nlq_sessions.setdefault(session_id, [])
+
     async with _llm_lock:
         answer = await asyncio.get_event_loop().run_in_executor(
-            None, copilot.query, req.question
+            None, copilot.query_multiturn, req.question, list(history)
         )
-    return {"answer": answer, "source": "copilot"}
+
+    # Record the turn and trim
+    history.append({"role": "user", "content": req.question})
+    history.append({"role": "assistant", "content": answer})
+    if len(history) > _NLQ_MAX_TURNS:
+        del history[:-_NLQ_MAX_TURNS]
+
+    return {"answer": answer, "source": "copilot",
+            "session_id": session_id, "turns": len(history) // 2}
+
+
+@app.post("/api/nlq/reset")
+async def nlq_reset(req: NLQRequest):
+    """Clear a conversation session."""
+    if req.session_id and req.session_id in _nlq_sessions:
+        del _nlq_sessions[req.session_id]
+    return {"status": "ok"}
 
 
 @app.get("/api/explain/{acp_id}")

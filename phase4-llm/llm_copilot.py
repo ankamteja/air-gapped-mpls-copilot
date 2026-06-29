@@ -117,6 +117,36 @@ OPERATOR QUESTION
 Answer in plain English, concisely (3–5 sentences). Reference specific nodes or interfaces where relevant.
 """
 
+NLQ_TEMPLATE_MULTITURN = """
+NETWORK TOPOLOGY CONTEXT (retrieved from local runbooks + incident history)
+=========================
+{context}
+
+CONVERSATION SO FAR
+=================
+{history}
+
+NEW OPERATOR QUESTION
+=================
+{question}
+
+Continue the conversation. Use the earlier turns to resolve follow-ups and
+pronouns (e.g. "it", "that link", "the same node"). Answer in plain English,
+concisely (3–5 sentences), grounded in the context above. Reference specific
+nodes or interfaces where relevant. Do not invent data that is not in the context.
+"""
+
+
+def _format_history(history) -> str:
+    """Render prior turns as a compact transcript for the prompt."""
+    if not history:
+        return "(this is the first question in the conversation)"
+    lines = []
+    for t in history[-8:]:  # cap context to the last 8 turns
+        who = "Operator" if t.get("role") == "user" else "Aether"
+        lines.append(f"{who}: {t.get('content', '').strip()}")
+    return "\n".join(lines)
+
 
 # ── AetherCopilot class ───────────────────────────────────────────────────────
 
@@ -201,18 +231,37 @@ class AetherCopilot:
         }
 
     def query(self, question: str) -> str:
-        """Natural language query — searches IKB and answers via LLM."""
-        results = query_all(question, top_k=4)
+        """Natural language query — searches IKB and answers via LLM (single-shot)."""
+        return self.query_multiturn(question, history=None)
+
+    def query_multiturn(self, question: str, history=None) -> str:
+        """
+        Multi-turn NLQ. `history` is a list of prior turns:
+            [{"role": "user"|"assistant", "content": "..."}, ...]
+        RAG retrieval is run against the full conversation (history + new question)
+        so follow-ups like "and what about pe2?" still pull relevant context.
+        """
+        history = history or []
+        # Retrieve against the running conversation, not just the latest line,
+        # so pronoun/elliptical follow-ups still ground in the right runbooks.
+        recent_user = " ".join(
+            t["content"] for t in history[-4:] if t.get("role") == "user"
+        )
+        retrieval_query = (recent_user + " " + question).strip()
+        results = query_all(retrieval_query, top_k=4)
         context = format_context(results) if results else "No relevant context found in the IKB."
-        if self._available:
-            prompt = NLQ_TEMPLATE.format(context=context[:2500], question=question)
-            answer = _ollama_generate(prompt, system=SYSTEM_PROMPT)
-            # Fall back to RAG if model not yet downloaded / server error
-            if answer.startswith("[LLM unavailable"):
-                return self._nlq_fallback(question, results)
-            return answer
-        else:
+
+        if not self._available:
             return self._nlq_fallback(question, results)
+
+        convo = _format_history(history)
+        prompt = NLQ_TEMPLATE_MULTITURN.format(
+            context=context[:2500], history=convo, question=question
+        )
+        answer = _ollama_generate(prompt, system=SYSTEM_PROMPT)
+        if answer.startswith("[LLM unavailable"):
+            return self._nlq_fallback(question, results)
+        return answer
 
     def _fallback_answers(self, acp, ttf_str, top_features) -> tuple[str, str, str]:
         """Rule-based structured answers when Ollama is offline."""
