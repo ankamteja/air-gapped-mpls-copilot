@@ -88,12 +88,24 @@ def _inject_fault(fault_class: str) -> bool:
         return False
 
 
-def _wait_for_acp(fault_class: str, timeout_s: int = 120) -> tuple[dict | None, float]:
-    """Poll ACP logs until a matching fault ACP appears. Returns (acp, wait_seconds)."""
+def _acp_files() -> set:
+    """Snapshot the current set of ACP log files (call BEFORE injecting a fault)."""
+    import glob
+    return set(glob.glob(os.path.join(MODELS_DIR, "acp_logs", "*.json")))
+
+
+def _wait_for_acp(fault_class: str, timeout_s: int = 120, baseline: set | None = None) -> tuple[dict | None, float]:
+    """
+    Poll ACP logs until a matching fault ACP appears. Returns (acp, wait_seconds).
+
+    `baseline` is the set of ACP files that existed BEFORE the fault was injected.
+    Pass it so the just-injected ACP (written before this call) is still detected —
+    otherwise the internal snapshot would already include it and never match.
+    """
     import glob
     acp_dir = os.path.join(MODELS_DIR, "acp_logs")
     start   = time.time()
-    seen    = {f for f in glob.glob(os.path.join(acp_dir, "*.json"))}
+    seen    = set(baseline) if baseline is not None else {f for f in glob.glob(os.path.join(acp_dir, "*.json"))}
 
     while time.time() - start < timeout_s:
         for fpath in glob.glob(os.path.join(acp_dir, "*.json")):
@@ -138,6 +150,7 @@ def scenario_1(containerlab: bool) -> dict:
         _container_exec("pe1", "tc qdisc change dev eth0 root netem delay 500ms 50ms")
     else:
         _print_info("Containerlab not requested — injecting synthetic latency fault...")
+        _lat_baseline = _acp_files()
         _inject_fault("latency")
 
     # Step 2: run benchmark for quantitative lead time
@@ -158,7 +171,7 @@ def scenario_1(containerlab: bool) -> dict:
         _print_fail(f"Benchmark error: {e}")
 
     # Step 3: wait for dashboard ACP
-    acp, wait = _wait_for_acp("latency", timeout_s=40)
+    acp, wait = _wait_for_acp("latency", timeout_s=40, baseline=locals().get("_lat_baseline"))
     if acp:
         _print_pass(f"ACP received in {wait:.0f}s — fault: {acp.get('ml_analysis',{}).get('predicted_fault_class','?')}")
         result["acp_received"] = True
@@ -202,8 +215,9 @@ def scenario_2(containerlab: bool) -> dict:
     else:
         _print_info("Injecting synthetic BGP flap via fault_streamer...")
         inject_ts = time.time()
+        baseline = _acp_files()           # snapshot BEFORE inject so the new ACP is detected
         _inject_fault("flap")
-        acp, wait = _wait_for_acp("flap", timeout_s=60)
+        acp, wait = _wait_for_acp("flap", timeout_s=60, baseline=baseline)
         if acp:
             mttd = wait
             _print_pass(f"ACP received in {mttd:.0f}s — fault: {acp.get('ml_analysis',{}).get('predicted_fault_class','?')}")
@@ -328,8 +342,9 @@ def scenario_4(_containerlab: bool) -> dict:
 
     # Verify the AI system handles low-confidence alerts differently
     _print_info("Injecting a fault to test policy gate...")
+    baseline = _acp_files()
     _inject_fault("loss")
-    acp, wait = _wait_for_acp("loss", timeout_s=60)
+    acp, wait = _wait_for_acp("loss", timeout_s=60, baseline=baseline)
     if acp:
         mode = acp.get("corroboration", {}).get("execution_mode", "?")
         conf = acp.get("ml_analysis", {}).get("confidence_score", 0)
