@@ -1608,6 +1608,13 @@ async function loadCompliance() {
   try {
     const r = await fetch('/api/compliance');
     const d = await r.json();
+    // First few seconds after boot the background probe hasn't finished yet
+    if (d.status === 'PENDING') {
+      if (badge)   { badge.textContent = 'Checking…'; badge.className = 'badge badge-yellow'; }
+      if (ovBadge) { ovBadge.textContent = 'Checking…'; ovBadge.className = 'badge badge-yellow'; }
+      if (detail)  detail.innerHTML = '<div style="font-size:11px;color:#6d7989">Running outbound probes…</div>';
+      return;
+    }
     const probes = d.probes || [];
     // Compliant = the airgap_compliance module reported COMPLIANT (every probe unreachable)
     const compliant = d.status === 'COMPLIANT' ||
@@ -2247,6 +2254,38 @@ async def dashboard():
     return DASHBOARD_HTML
 
 
+# Air-gap compliance is computed by blocking socket probes (DNS resolution can
+# hang past the per-probe timeout). NEVER run it on the request path — a single
+# background loop refreshes the cache and every endpoint just reads it. This keeps
+# the async event loop free no matter how slow the probes get.
+_airgap_cache = {"ts": 0.0, "report": None}
+_AIRGAP_REFRESH_S = 30.0
+
+
+def _compute_airgap_report() -> dict:
+    from airgap_compliance import run_compliance_check, _sign_report
+    return _sign_report(run_compliance_check())
+
+
+async def _airgap_refresh_loop():
+    """Background task: refresh the air-gap report off the request path."""
+    while True:
+        try:
+            report = await asyncio.get_event_loop().run_in_executor(
+                None, _compute_airgap_report
+            )
+            _airgap_cache["report"] = report
+            _airgap_cache["ts"] = time.time()
+        except Exception as e:
+            print(f"[!] airgap refresh failed: {e}")
+        await asyncio.sleep(_AIRGAP_REFRESH_S)
+
+
+def _get_airgap_cached() -> dict | None:
+    """Pure, non-blocking read of the last computed report (may be None at boot)."""
+    return _airgap_cache["report"]
+
+
 @app.get("/api/status")
 async def status():
     models_ok = all(
@@ -2272,9 +2311,9 @@ async def status():
     except Exception:
         pass
 
-    from airgap_compliance import _probe
-    dns_result = _probe("8.8.8.8", 53)
-    compliant = not dns_result["reachable"]
+    report = _get_airgap_cached()
+    # None until the first background refresh completes (a few seconds after boot)
+    compliant = (report or {}).get("status") == "COMPLIANT" if report else None
 
     return {
         "models_loaded": models_ok,
@@ -2692,9 +2731,11 @@ async def action_log_endpoint(limit: int = 100):
 
 @app.get("/api/compliance")
 async def compliance():
-    from airgap_compliance import run_compliance_check, _sign_report
-    report = run_compliance_check()
-    report = _sign_report(report)
+    # Pure cache read — the background loop refreshes it off the request path.
+    report = _get_airgap_cached()
+    if report is None:
+        return {"status": "PENDING", "probes": [],
+                "detail": "Air-gap probe running — first result in a few seconds."}
     return report
 
 
@@ -2816,8 +2857,10 @@ async def _tail_acp_log():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(_tail_acp_log())
+    asyncio.create_task(_airgap_refresh_loop())
     print("[*] Aether NOC Dashboard v5.0 — http://localhost:8080")
     print("[*] Watching acp_logs/ → WebSocket live feed active")
+    print("[*] Air-gap compliance refresh loop active (background)")
 
 
 if __name__ == "__main__":
