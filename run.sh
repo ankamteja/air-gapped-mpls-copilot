@@ -5,10 +5,12 @@
 # Usage:
 #   ./run.sh                  SYNTHETIC mode (no sudo, no Containerlab) — always
 #                             works. This is the default demo path.
-#   ./run.sh --clab           Deploy the real Containerlab topology + MPLS/VRF +
-#                             SD-WAN overlay + QoS + Prometheus/Grafana (needs
-#                             sudo + Docker + containerlab). Falls back to
-#                             synthetic if any of that is unavailable.
+#   ./run.sh --clab           Deploy (or reuse) the real Containerlab topology +
+#                             MPLS/VRF + SD-WAN overlay + QoS, and feed the
+#                             dashboard REAL FRR telemetry via the exporter. Uses
+#                             sudo only if Docker needs it (not needed when you
+#                             are in the docker group). Falls back to synthetic
+#                             if containerlab/docker are unavailable.
 #   ./run.sh --airgap         Run the SYNTHETIC stack inside a zero-egress
 #                             network namespace (loopback only). Proves true
 #                             air-gap: the compliance probe reports COMPLIANT and
@@ -18,7 +20,8 @@
 #   ./run.sh --clab --airgap  Real Containerlab, but the lab data-plane is put on
 #                             an INTERNAL docker network (no internet egress), so
 #                             the simulated network is genuinely air-gapped.
-#   ./run.sh stop             Stop all Aether processes (and the clab topology).
+#   ./run.sh stop             Stop the Aether processes (leaves the lab running).
+#   ./run.sh destroy          Stop everything AND tear down the Containerlab lab.
 #
 # Always started:  Ollama (LLM) · NetFlow sim · traffic gen · fault streamer
 #                  + inference · NOC dashboard (:8080)
@@ -51,13 +54,16 @@ stop_all() {
   kill_proc "phase2-telemetry/traffic_generator.py"
   kill_proc "phase2-telemetry/exporter.py"
   kill_proc "ollama serve"   # includes any namespace-local instance from --airgap
-  if command -v containerlab >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    if sudo containerlab inspect -t "$TOPOLOGY" >/dev/null 2>&1; then
-      info "destroying Containerlab topology…"
-      sudo containerlab destroy -t "$TOPOLOGY" --cleanup >/dev/null 2>&1 || true
-    fi
-  fi
+  info "Containerlab topology left running for fast reuse — './run.sh destroy' to remove it."
   info "done."
+}
+
+destroy_clab() {
+  command -v containerlab >/dev/null 2>&1 || { info "containerlab not installed."; return; }
+  local CL="containerlab"; docker info >/dev/null 2>&1 || CL="sudo containerlab"
+  log "Destroying Containerlab topology…"
+  $CL destroy -t "$TOPOLOGY" --cleanup 2>&1 | sed 's/^/    /' || true
+  docker network rm clab >/dev/null 2>&1 || true
 }
 
 start_bg() {
@@ -82,6 +88,7 @@ WANT_AIRGAP=0
 for arg in "$@"; do
   case "$arg" in
     stop)            stop_all; exit 0 ;;
+    destroy)         stop_all; destroy_clab; exit 0 ;;
     --clab|--clab=1) WANT_CLAB=1 ;;
     --no-clab)       WANT_CLAB=0 ;;
     --airgap)        WANT_AIRGAP=1 ;;
@@ -121,46 +128,66 @@ AIRGAP_DATAPLANE=0
 # ── [optional] Containerlab + telemetry stack ────────────────────────────────
 if [ "$WANT_CLAB" = 1 ]; then
   log "Containerlab requested — checking prerequisites…"
-  if command -v containerlab >/dev/null 2>&1 && command -v docker >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  if ! command -v containerlab >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
+    info "!! containerlab/docker not installed — falling back to synthetic mode"
+    info "   (the AI stack runs fine on synthetic data; topology is optional)"
+  else
+    # Use sudo only if Docker is NOT usable directly (i.e. user not in docker group).
+    # On a docker-group machine, containerlab needs no sudo at all.
+    if docker info >/dev/null 2>&1; then
+      DK="docker"; CL="containerlab"
+      info "docker usable without sudo — running containerlab unprivileged"
+    else
+      DK="sudo docker"; CL="sudo containerlab"
+      info "docker needs sudo — you may be prompted for your password"
+    fi
+
     # --clab --airgap: put the lab management network on an INTERNAL docker bridge
     # (no NAT, no gateway) so the simulated nodes have zero internet egress.
     if [ "$WANT_AIRGAP" = 1 ]; then
-      if ! sudo docker network inspect clab >/dev/null 2>&1; then
-        if sudo docker network create --internal --subnet 172.20.20.0/24 clab >/dev/null 2>&1; then
-          AIRGAP_DATAPLANE=1
-          info "air-gap: created INTERNAL 'clab' mgmt network (no egress) for the lab"
+      if $DK network inspect clab >/dev/null 2>&1; then
+        if [ "$($DK network inspect clab -f '{{.Internal}}' 2>/dev/null)" = "true" ]; then
+          AIRGAP_DATAPLANE=1; info "air-gap: 'clab' network is internal (no egress)"
         else
-          info "!! could not create internal 'clab' network — lab may retain egress"
+          info "!! 'clab' network exists and is NOT internal — './run.sh stop' first, then retry"
         fi
+      elif $DK network create --internal --subnet 172.20.20.0/24 clab >/dev/null 2>&1; then
+        AIRGAP_DATAPLANE=1; info "air-gap: created INTERNAL 'clab' network (no egress)"
       else
-        # network already exists; report whether it is internal
-        if [ "$(sudo docker network inspect clab -f '{{.Internal}}' 2>/dev/null)" = "true" ]; then
-          AIRGAP_DATAPLANE=1
-          info "air-gap: existing 'clab' network is internal (no egress)"
-        else
-          info "!! existing 'clab' network is NOT internal — run './run.sh stop' first to reset"
-        fi
+        info "!! could not create internal 'clab' network — lab may retain egress"
       fi
     fi
-    info "Deploying topology (sudo containerlab)…"
-    sudo containerlab destroy -t "$TOPOLOGY" --cleanup >/dev/null 2>&1 || true
-    if sudo containerlab deploy -t "$TOPOLOGY"; then
+
+    # Reuse an already-running topology if present (fast, non-disruptive); else deploy.
+    if $CL inspect -t "$TOPOLOGY" 2>/dev/null | grep -q running; then
       CLAB_UP=1
-      info "Applying MPLS / VRF / overlay / QoS…"
-      ( cd "$REPO/phase1-simulation/topology" \
-        && LAB=aether bash chunk3-setup.sh \
-        && LAB=aether bash overlay-setup.sh \
-        && LAB=aether bash qos-setup.sh ) || info "!! post-deploy config had errors (continuing)"
-      info "Starting Prometheus + Grafana…"
-      ( cd "$TELEMETRY" && docker compose up -d ) || info "!! docker compose failed (continuing)"
-      start_bg "exporter" python3 "$TELEMETRY/exporter.py"
-      wait_http "http://localhost:8000/metrics" "exporter" 15 || true
+      info "Reusing already-deployed topology (clab-aether-*)."
     else
-      info "!! containerlab deploy failed — falling back to synthetic mode"
+      info "Deploying topology ($CL deploy)…"
+      $CL destroy -t "$TOPOLOGY" --cleanup >/dev/null 2>&1 || true
+      if $CL deploy -t "$TOPOLOGY"; then
+        CLAB_UP=1
+        info "Applying MPLS / VRF / SD-WAN overlay / QoS…"
+        ( cd "$REPO/phase1-simulation/topology" \
+          && LAB=aether bash chunk3-setup.sh \
+          && LAB=aether bash overlay-setup.sh \
+          && LAB=aether bash qos-setup.sh ) || info "!! post-deploy config had errors (continuing)"
+      else
+        info "!! containerlab deploy failed — falling back to synthetic mode"
+      fi
     fi
-  else
-    info "!! containerlab/docker/sudo not available — falling back to synthetic mode"
-    info "   (the AI stack runs fine on synthetic data; topology is optional)"
+
+    if [ "$CLAB_UP" = 1 ]; then
+      info "Starting FRR telemetry exporter (real interface/routing counters)…"
+      start_bg "exporter" env LAB=aether python3 "$TELEMETRY/exporter.py"
+      wait_http "http://localhost:8000/metrics" "exporter" 15 || true
+      # Prometheus/Grafana are optional extras (the dashboard reads the exporter
+      # directly). Skip in air-gap mode since 'compose up' may need image pulls.
+      if [ "$WANT_AIRGAP" != 1 ]; then
+        info "Starting Prometheus + Grafana (optional)…"
+        ( cd "$TELEMETRY" && $DK compose up -d ) >/dev/null 2>&1 || info "!! docker compose failed (continuing)"
+      fi
+    fi
   fi
 elif [ -n "${AETHER_NETNS:-}" ]; then
   log "Air-gapped synthetic mode (zero-egress namespace)."

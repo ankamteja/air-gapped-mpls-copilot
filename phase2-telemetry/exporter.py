@@ -8,6 +8,7 @@
 #
 # Zero External Dependencies: Uses python's built-in http.server module.
 # =============================================================================
+import os
 import subprocess
 import json
 import re
@@ -20,7 +21,10 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 PORT = 8000
-LAB_NAME = "chunk3"
+# Lab name comes from the LAB env var so the exporter targets the same
+# Containerlab topology the rest of the stack uses (default: aether). Falls back
+# to the legacy LAB_NAME var for compatibility.
+LAB_NAME = os.environ.get("LAB", os.environ.get("LAB_NAME", "aether"))
 NODES = ["pe1", "p1", "pe2", "ce-branch1", "ce-branch2", "ce-hub", "ce-dc"]
 
 def get_container_name(node):
@@ -198,6 +202,52 @@ def collect_frr_metrics(node, container):
 
     return metrics
 
+def collect_all() -> str:
+    """Scrape every node once and render the Prometheus exposition text.
+    Slow (sequential docker exec + in-container ping), so it runs in a background
+    thread and the result is cached — see _collector_loop()."""
+    output_metrics = []
+    for node in NODES:
+        container = get_container_name(node)
+        # Verify container is running
+        status = exec_cmd(container, "echo running")
+        if not status:
+            output_metrics.append(f'container_running{{node="{node}"}} 0')
+            continue
+
+        output_metrics.append(f'container_running{{node="{node}"}} 1')
+
+        # Collect Interface telemetry
+        output_metrics.extend(collect_interface_metrics(node, container))
+
+        # Collect Routing telemetry (only core routers run OSPF/LDP/BGP)
+        if node in ["pe1", "p1", "pe2"]:
+            output_metrics.extend(collect_frr_metrics(node, container))
+
+        # RTT/jitter measurement (core routers only — CE nodes have no reachable peer IPs)
+        for peer_ip in _LATENCY_PEERS.get(node, []):
+            output_metrics.extend(collect_latency_jitter(node, container, peer_ip))
+
+    return "\n".join(output_metrics) + "\n"
+
+
+# Cached exposition text, refreshed continuously by a background thread so that
+# /metrics always answers in <10 ms (a full scrape takes ~10 s of docker exec).
+_CACHE = {"text": "# telemetry warming up\n", "ts": 0.0}
+REFRESH_S = 3.0  # min gap between full scrapes (actual cadence ≈ scrape time)
+
+def _collector_loop():
+    import time
+    while True:
+        try:
+            text = collect_all()
+            _CACHE["text"] = text
+            _CACHE["ts"] = time.time()
+        except Exception as e:
+            sys.stderr.write(f"[exporter] collect error: {e}\n")
+        time.sleep(REFRESH_S)
+
+
 class MetricsHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # suppress per-request stdout noise at 1 s scrape rate
@@ -207,43 +257,17 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
             self.end_headers()
-            
-            output_metrics = []
-            
-            # System CPU/Memory emulation or metrics could be added here
-            for node in NODES:
-                container = get_container_name(node)
-                # Verify container is running
-                status = exec_cmd(container, "echo running")
-                if not status:
-                    output_metrics.append(f'container_running{{node="{node}"}} 0')
-                    continue
-                
-                output_metrics.append(f'container_running{{node="{node}"}} 1')
-                
-                # Collect Interface telemetry
-                iface_m = collect_interface_metrics(node, container)
-                output_metrics.extend(iface_m)
-                
-                # Collect Routing telemetry (only core routers run OSPF/LDP/BGP)
-                if node in ["pe1", "p1", "pe2"]:
-                    frr_m = collect_frr_metrics(node, container)
-                    output_metrics.extend(frr_m)
-
-                # RTT/jitter measurement (core routers only — CE nodes have no reachable peer IPs)
-                for peer_ip in _LATENCY_PEERS.get(node, []):
-                    lat_m = collect_latency_jitter(node, container, peer_ip)
-                    output_metrics.extend(lat_m)
-            
-            # Join with newlines
-            self.wfile.write("\n".join(output_metrics).encode('utf-8') + b"\n")
+            self.wfile.write(_CACHE["text"].encode('utf-8'))   # instant: serve cache
         else:
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b"Not Found")
 
 def run():
-    print(f"[*] Starting Air-Gapped Telemetry Exporter on port {PORT}...")
+    import threading
+    print(f"[*] Starting Air-Gapped Telemetry Exporter on port {PORT} (lab={LAB_NAME})...", flush=True)
+    t = threading.Thread(target=_collector_loop, daemon=True)
+    t.start()
     server = ThreadedHTTPServer(('0.0.0.0', PORT), MetricsHandler)
     try:
         server.serve_forever()
