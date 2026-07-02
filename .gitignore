@@ -4,6 +4,8 @@ clab-*/
 # Personal notes / drafts
 idea*.md
 *idea*.md
+GAP_ANALYSIS.md
+GAPS_AND_IDEAS.md
 
 # Python
 __pycache__/
