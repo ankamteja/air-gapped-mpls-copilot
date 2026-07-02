@@ -222,9 +222,17 @@ bash phase4-llm/setup_llm.sh    # one-time, needs internet: Ollama + Mistral 7B 
 #  → NOC Dashboard at http://localhost:8080
 
 ./run.sh --clab                 # also deploy the real Containerlab topology + MPLS/VRF +
-                                #   SD-WAN overlay + QoS + Prometheus/Grafana (needs sudo +
-                                #   Docker + containerlab; falls back to synthetic if absent)
-./run.sh stop                   # stop all Aether processes
+                                #   SD-WAN overlay + QoS + Prometheus/Grafana (no sudo needed
+                                #   with docker-group access; falls back to synthetic if absent)
+./run.sh --airgap               # synthetic stack inside a zero-egress network namespace —
+                                #   the compliance probe genuinely reports COMPLIANT
+./run.sh --clab --airgap        # BOTH: real lab on the host, copilot stack in a zero-egress
+                                #   namespace. Real FRR telemetry still flows (docker exec is
+                                #   a unix socket, which crosses network namespaces) and a
+                                #   loopback-only bridge keeps http://localhost:8080 browsable
+                                #   from the host. AIR-GAPPED + COMPLIANT with live lab data.
+./run.sh stop                   # stop all Aether processes (lab stays up for fast reuse)
+./run.sh destroy                # stop everything and tear down the Containerlab lab
 ```
 
 `run.sh` starts: Ollama (LLM) · NetFlow simulator · traffic generator · fault streamer +
