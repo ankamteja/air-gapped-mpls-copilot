@@ -13,6 +13,7 @@ import subprocess
 import json
 import re
 import sys
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
@@ -206,7 +207,10 @@ def collect_all() -> str:
     """Scrape every node once and render the Prometheus exposition text.
     Slow (sequential docker exec + in-container ping), so it runs in a background
     thread and the result is cached — see _collector_loop()."""
-    output_metrics = []
+    # Scrape timestamp first: rate consumers must delta over THIS value, not
+    # their own poll interval — the cache serves identical counters for
+    # ~REFRESH_S + scrape_time, so wall-clock deltas between polls read 0.
+    output_metrics = [f'exporter_scrape_ts {time.time():.3f}']
     for node in NODES:
         container = get_container_name(node)
         # Verify container is running

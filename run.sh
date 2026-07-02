@@ -64,6 +64,7 @@ stop_all() {
   kill_proc "phase2-telemetry/traffic_generator.py"
   kill_proc "phase2-telemetry/exporter.py"
   kill_proc "phase5-dashboard/netns_bridge.py"
+  kill_proc "topology/lab_traffic.sh"
   kill_proc "ollama serve"   # includes any namespace-local instance from --airgap
   info "Containerlab topology left running for fast reuse — './run.sh destroy' to remove it."
   info "done."
@@ -152,6 +153,8 @@ if [ "$WANT_CLAB" = 1 ] && [ -n "${AETHER_NETNS:-}" ] && [ "${AETHER_CLAB_UP:-0}
   info "Starting ingress bridge (netns side) so the host browser can reach :8080…"
   start_bg "bridge_netns" python3 "$REPO/phase5-dashboard/netns_bridge.py" \
     --unix-to-tcp "$LOGS/dash.sock" 127.0.0.1:8080
+  info "Starting in-lab VPN traffic (ping-only, air-gap safe)…"
+  start_bg "lab_traffic" env LAB=aether bash "$REPO/phase1-simulation/topology/lab_traffic.sh"
 elif [ "$WANT_CLAB" = 1 ]; then
   log "Containerlab requested — checking prerequisites…"
   if ! command -v containerlab >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
@@ -220,6 +223,8 @@ elif [ "$WANT_CLAB" = 1 ]; then
       info "Starting FRR telemetry exporter (real interface/routing counters)…"
       start_bg "exporter" env LAB=aether python3 "$TELEMETRY/exporter.py"
       wait_http "http://localhost:8000/metrics" "exporter" 15 || true
+      info "Starting in-lab VPN traffic (ping-only, air-gap safe)…"
+      start_bg "lab_traffic" env LAB=aether bash "$REPO/phase1-simulation/topology/lab_traffic.sh"
       info "Starting Prometheus + Grafana (optional)…"
       ( cd "$TELEMETRY" && $DK compose up -d ) >/dev/null 2>&1 || info "!! docker compose failed (continuing)"
     fi

@@ -238,6 +238,11 @@ _link_util: dict[str, float] = {
 
 # Previous exporter counter sample for byte-rate computation: (node,iface) -> (tx_bytes, ts)
 _exporter_prev: dict[tuple, tuple] = {}
+# Last computed link rates + the exporter scrape ts they were computed from.
+# The exporter serves CACHED counters (refreshed every ~15 s), so between cache
+# refreshes every poll sees identical numbers — recomputing would read 0 Mbps.
+# We recompute only when exporter_scrape_ts advances and reuse the result otherwise.
+_exporter_last = {"scrape_ts": 0.0, "result": None}
 
 
 def _scrape_exporter_links() -> dict | None:
@@ -255,7 +260,14 @@ def _scrape_exporter_links() -> dict | None:
 
     # Parse:  net_tx_bytes{node="pe1",interface="eth1"} 12345
     import re
-    now = time.time()
+    m_ts = re.search(r'exporter_scrape_ts\s+([0-9.]+)', text)
+    scrape_ts = float(m_ts.group(1)) if m_ts else time.time()
+
+    # Same cached scrape as last poll → counters can't have moved; reuse the
+    # last computed rates instead of reading a zero delta.
+    if scrape_ts == _exporter_last["scrape_ts"] and _exporter_last["result"] is not None:
+        return _exporter_last["result"]
+
     cur = {}
     for m in re.finditer(r'net_tx_bytes\{node="([^"]+)",interface="([^"]+)"\}\s+([0-9.]+)', text):
         cur[(m.group(1), m.group(2))] = float(m.group(3))
@@ -270,15 +282,18 @@ def _scrape_exporter_links() -> dict | None:
         if tx is None:
             continue
         prev = _exporter_prev.get(key)
-        _exporter_prev[key] = (tx, now)
+        _exporter_prev[key] = (tx, scrape_ts)
         if prev is None:
             continue
         prev_tx, prev_ts = prev
-        dt = max(0.001, now - prev_ts)
+        dt = max(0.001, scrape_ts - prev_ts)
         bps = max(0.0, (tx - prev_tx) * 8.0 / dt)
         util = min(100.0, bps / cap_bps * 100.0)
         result[link] = {"util_pct": round(util, 1), "mbps": round(bps / 1e6, 2)}
-    return result or None
+    result = result or None
+    _exporter_last["scrape_ts"] = scrape_ts
+    _exporter_last["result"] = result
+    return result
 
 
 # ── HTML Dashboard ────────────────────────────────────────────────────────────
