@@ -15,7 +15,7 @@
 # =============================================================================
 set -euo pipefail
 
-LAB="${LAB:-chunk3}"               # override with LAB=aether for the canonical topology
+LAB="${LAB:-aether}"               # canonical topology; override with LAB=chunk3 for the legacy lab
 P() { echo "clab-${LAB}-$1"; }     # container-name helper:  $(P pe1) -> clab-${LAB}-pe1
 
 # -----------------------------------------------------------------------------

@@ -20,7 +20,7 @@
 set -euo pipefail
 
 INJECTOR="$(dirname "$0")/fault_injector.py"
-LAB="chunk3"
+LAB="${LAB:-aether}"
 
 P() { echo "clab-${LAB}-$1"; }
 

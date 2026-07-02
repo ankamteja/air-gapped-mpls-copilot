@@ -10,12 +10,12 @@
 # =============================================================================
 set -euo pipefail
 
-LAB=chunk3
+LAB="${LAB:-aether}"
 P() { echo "clab-${LAB}-$1"; }
 
 # Check if containers are running
 if ! docker ps | grep -q "$(P pe1)"; then
-  echo "Error: Lab is not running. Deploy chunk3.clab.yml first."
+  echo "Error: Lab is not running. Deploy aether-lab.clab.yml first."
   exit 1
 fi
 
@@ -98,5 +98,5 @@ docker exec -d "$(P ce-branch2)" sh -c '
 '
 
 echo "==> Traffic simulation running successfully in the background!"
-echo "    To verify: run 'docker exec clab-chunk3-pe1 tcpdump -i eth2 -n'"
+echo "    To verify: run 'docker exec clab-${LAB}-pe1 tcpdump -i eth2 -n'"
 echo "    To stop: run 'killall iperf3' or rebuild containers."

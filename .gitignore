@@ -54,3 +54,7 @@ phase6-validation/report_*.json
 
 # Editor / office lock files
 .~lock.*#
+
+# Presentation decks / exports (large binaries; submissions live outside the repo)
+*.pptx
+*.pdf

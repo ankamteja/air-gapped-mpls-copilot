@@ -13,7 +13,7 @@ import os
 import sys
 from datetime import datetime
 
-LAB_NAME = "chunk3"
+LAB_NAME = os.environ.get("LAB", os.environ.get("LAB_NAME", "aether"))
 # Always write the label log next to this script (the topology dir), so it lands
 # in the same place data_collector.py reads from regardless of the caller's CWD.
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faults_log.csv")

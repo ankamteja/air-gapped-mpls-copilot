@@ -23,7 +23,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOPOLOGY_DIR="${SCRIPT_DIR}"
 INJECTOR="${TOPOLOGY_DIR}/fault_injector.py"
-LAB=chunk3
+LAB="${LAB:-aether}"
 
 P() { echo "clab-${LAB}-$1"; }
 

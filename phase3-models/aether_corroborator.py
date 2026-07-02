@@ -13,6 +13,11 @@ from acp_manager import AnomalyContextPacket
 from graph_model import ClonalGraphEngine
 from taxonomy import DISPLAY_TO_INFO, policy_for_action
 
+# Containerlab lab name the generated mitigation commands target — must match
+# the deployed topology (run.sh exports LAB=aether). Same convention as
+# phase2-telemetry/exporter.py and phase1 fault_injector.py.
+LAB_NAME = os.environ.get("LAB", os.environ.get("LAB_NAME", "aether"))
+
 # Digital twin divergence is a PSF (Predictive Safety Factor) — it widens
 # the rationale string for operator visibility but never gates auto-execute.
 try:
@@ -38,7 +43,7 @@ class AetherCorroborator:
         if winner_clone == "CLONE_REROUTED_OVERLAY":
             return [
                 f"# mitigation: Reroute target traffic to backup SD-WAN tunnel overlay",
-                f"docker exec clab-chunk3-{target_node} vtysh -c '",
+                f"docker exec clab-{LAB_NAME}-{target_node} vtysh -c '",
                 f"  configure terminal",
                 f"  router bgp 65000 vrf CUST",
                 f"   neighbor 10.1.11.2 route-map PREPEND_OUT out",
@@ -48,17 +53,17 @@ class AetherCorroborator:
                 f"  exit",
                 f"  end'",
                 f"# Verification:",
-                f"docker exec clab-chunk3-{target_node} vtysh -c 'show bgp vrf CUST ipv4 unicast summary'"
+                f"docker exec clab-{LAB_NAME}-{target_node} vtysh -c 'show bgp vrf CUST ipv4 unicast summary'"
             ]
         elif winner_clone == "CLONE_QOS_THROTTLED":
             return [
                 f"# mitigation: Apply Traffic Control (tc) Token Bucket Filter rate limit to non-critical bulk transfer ports",
                 f"# Limits bulk transfer (port 5002) to 1Mbps, leaving priority VoIP (port 5001) untouched",
-                f"docker exec clab-chunk3-{target_node} tc qdisc add dev {target_iface} root handle 1: htb default 10",
-                f"docker exec clab-chunk3-{target_node} tc class add dev {target_iface} parent 1: classid 1:1 htb rate 5mbit",
-                f"docker exec clab-chunk3-{target_node} tc class add dev {target_iface} parent 1:1 classid 1:10 htb rate 4mbit ceil 5mbit prio 1",
-                f"docker exec clab-chunk3-{target_node} tc class add dev {target_iface} parent 1:1 classid 1:20 htb rate 1mbit ceil 1mbit prio 2",
-                f"docker exec clab-chunk3-{target_node} tc filter add dev {target_iface} protocol ip parent 1:0 prio 1 u32 match ip dport 5002 0xffff flowid 1:20"
+                f"docker exec clab-{LAB_NAME}-{target_node} tc qdisc add dev {target_iface} root handle 1: htb default 10",
+                f"docker exec clab-{LAB_NAME}-{target_node} tc class add dev {target_iface} parent 1: classid 1:1 htb rate 5mbit",
+                f"docker exec clab-{LAB_NAME}-{target_node} tc class add dev {target_iface} parent 1:1 classid 1:10 htb rate 4mbit ceil 5mbit prio 1",
+                f"docker exec clab-{LAB_NAME}-{target_node} tc class add dev {target_iface} parent 1:1 classid 1:20 htb rate 1mbit ceil 1mbit prio 2",
+                f"docker exec clab-{LAB_NAME}-{target_node} tc filter add dev {target_iface} protocol ip parent 1:0 prio 1 u32 match ip dport 5002 0xffff flowid 1:20"
             ]
         else:
             return ["# No mitigation commands generated - Baseline state optimal."]
