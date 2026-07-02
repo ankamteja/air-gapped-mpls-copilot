@@ -36,6 +36,10 @@ set -uo pipefail   # NOTE: no -e; we want graceful fallback, not hard exits
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
 LOGS="$REPO/.logs"
+
+# Air-gap: every child process must use ONLY local model caches — never let
+# huggingface_hub/transformers attempt an online version check at runtime.
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1
 TOPOLOGY="$REPO/phase1-simulation/topology/aether-lab.clab.yml"
 TELEMETRY="$REPO/phase2-telemetry"
 mkdir -p "$LOGS"

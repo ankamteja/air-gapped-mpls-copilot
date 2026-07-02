@@ -1852,9 +1852,13 @@ async function fetchExplanation(acp_id) {
   if (!acp_id) return;
   try {
     const r = await fetch('/api/explain/' + encodeURIComponent(acp_id));
-    const d = await r.json();
     const el = document.getElementById('modal-explain-body');
     if (!el) return;
+    if (!r.ok) {
+      el.innerHTML = '<div style="color:#f85149;padding:10px">Explain failed — HTTP ' + r.status + ' (see .logs/dashboard.log)</div>';
+      return;
+    }
+    const d = await r.json();
     if (d.error) {
       el.innerHTML = '<div style="color:#f85149;padding:10px">' + d.error + '</div>';
       return;

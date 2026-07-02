@@ -20,6 +20,15 @@ import json
 import glob
 import argparse
 
+# Air-gap: force huggingface_hub/transformers to use ONLY the local model cache.
+# Without this, SentenceTransformerEmbeddingFunction does an online version
+# check against huggingface.co on first query — an outbound call that violates
+# the air gap and 500s the whole RAG path inside a zero-egress namespace.
+# Must be set before sentence_transformers/huggingface_hub are imported.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT   = os.path.dirname(SCRIPT_DIR)
 RUNBOOK_DIR = os.path.join(SCRIPT_DIR, "runbooks")
