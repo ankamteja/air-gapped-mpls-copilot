@@ -2,9 +2,6 @@
 
 > Edge-Assisted Predictive Resilience and Heuristic Mitigation Framework for Air-Gapped Networks
 
-**Hackathon:** Bharatiya Antariksh Hackathon 2026 (ISRO × Hack2skill)  
-**Problem Statement 13:** Air-Gapped Predictive Copilot for Secure MPLS Operations
-
 An autonomous, offline AI NOC Copilot that predicts network failures before SLA breach, mathematically validates those predictions, selects optimal mitigation from first principles, and explains everything in plain English — with **zero cloud dependency**.
 
 ---
@@ -391,7 +388,6 @@ air-gapped-mpls-copilot/
 | If you want | Read |
 |---|---|
 | To run the whole stack | [COMMANDS.md](COMMANDS.md) |
-| The problem statement it answers | [PblmStmnt.md](PblmStmnt.md) |
 | What is claimed vs. measured | "Measured results & honest scope" above |
 | What is still missing | [GAP_ANALYSIS.md](GAP_ANALYSIS.md) |
 | How faults are injected for demos | [docs/fault-injection.md](docs/fault-injection.md) |
