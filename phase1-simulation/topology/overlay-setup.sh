@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# overlay-setup.sh — SD-WAN overlay tunnel for Project Aether (PS-13 Objective 1)
+# overlay-setup.sh — SD-WAN overlay tunnel for Project Aether
 #
 # Builds a REAL GRE overlay tunnel between PE1 and PE2 that rides over the MPLS
 # provider core (PE1 → P1 → PE2). This is the physical backing for the SD-WAN

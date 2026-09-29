@@ -141,6 +141,6 @@ The exporter is **threaded** (`ThreadingMixIn`) so Prometheus scrapes every 1 s 
 | Gap | Impact | Fix |
 |---|---|---|
 | No RTT / jitter measurement | Latency faults visible only via counter change rates, not direct delay | Add `ping` RTT scraping or TWAMP-lite probe |
-| No SNMP | Problem statement mentions SNMP ifInOctets etc; we use a custom exporter | Add `snmpwalk` scraping for parity |
+| No SNMP | The original requirements mention SNMP ifInOctets etc; we use a custom exporter | Add `snmpwalk` scraping for parity |
 | No NetFlow/IPFIX | Flow-level visibility absent | Add softflowd + ntopng inside containers |
 | Exporter is single-process | If it crashes, collection stops | Add supervisord or systemd watchdog |

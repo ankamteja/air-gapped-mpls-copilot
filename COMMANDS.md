@@ -344,7 +344,7 @@ curl -s http://localhost:8080/api/netflow | python3 -m json.tool
 
 ### Phase 6 — Scenario validation
 
-Run all 4 PS-13 scenarios with the automated suite:
+Run all 4 validation scenarios with the automated suite:
 
 ```bash
 # Run all 4 scenarios (synthetic injection, no Containerlab required)
@@ -484,7 +484,7 @@ for m in tags.get('models',[]): print(m['name'])"
 | Remediation CLI commands (click-to-copy) | ✅ | `/api/explain/{acp_id}` → `remediation` field |
 | MPLS tunnel health endpoint | ✅ | `/api/tunnel-health` |
 | NetFlow summary endpoint | ✅ | `/api/netflow` |
-| Scenario validation suite (all 4 PS-13) | ✅ | `phase6-validation/run_scenarios.py` |
+| Scenario validation suite (all 4 scenarios) | ✅ | `phase6-validation/run_scenarios.py` |
 | Data-plane links on containers | ❌ | eth1/eth2 veth pairs not created — only eth0 (management) exists |
 | Prophet seasonality forecaster | ⚠️ | Code exists, needs hours of cyclical history to activate seasonal model |
 | Real router API execution | ⚠️ | Remediation commands shown to operator but not auto-applied (air-gapped safety) |

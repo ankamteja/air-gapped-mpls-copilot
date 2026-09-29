@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# qos-setup.sh — Baseline QoS policies for Project Aether (PS-13 Objective 1)
+# qos-setup.sh — Baseline QoS policies for Project Aether
 #
 # Installs an HTB hierarchy on each PE→CE egress interface so QoS is in force
 # from startup (not only as a reactive remediation). Three classes per link:

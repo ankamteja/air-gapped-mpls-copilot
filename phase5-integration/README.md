@@ -6,7 +6,7 @@
 > structural marker for that phase — the integration glue is the data flow below,
 > not a separate codebase.
 
-The problem statement's Phase 5 asks us to *"wire predictive model outputs and
+Phase 5 of the project plan is to *"wire predictive model outputs and
 network telemetry into the LLM context window via the RAG pipeline"* and *"produce
 structured responses for every alert"*. That is exactly the ACP → explain flow:
 
@@ -45,7 +45,7 @@ structured responses for every alert"*. That is exactly the ACP → explain flow
 | RAG retrieval over internal artifacts only | `phase4-llm/ikb_manager.py` (ChromaDB: runbooks + incident history) |
 | Live operator surface for the three NOC questions | `phase5-dashboard/app.py` — "Overview" Q1/Q2/Q3 panels + incident modal |
 
-## The three operational questions (problem statement Expected Outcomes)
+## The three operational questions
 
 Every alert is rendered against the three questions the NOC must answer in real time:
 

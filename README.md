@@ -132,7 +132,7 @@ A stochastic model never directly controls infrastructure. Only the deterministi
 | **5** | Remediation Log — real `docker exec` command output for every action taken | ✅ Complete |
 | **5** | Validation view — Phase 6 scenarios with lead time / MTTD + run button | ✅ Complete |
 | **5** | `/api/tunnel-health`, `/api/netflow`, `/api/scenarios`, `/api/action-log` | ✅ Complete |
-| **6** | Scenario validation suite (`run_scenarios.py`) — all 4 PS-13 scenarios automated | ✅ Complete |
+| **6** | Scenario validation suite (`run_scenarios.py`) — all 4 scenarios automated | ✅ Complete |
 | **6** | Scenario 1: gradual link degradation → benchmark lead-time | ✅ Complete |
 | **6** | Scenario 2: BGP route flap → MTTD measurement | ✅ Complete |
 | **6** | Scenario 3: telemetry collector failure → graceful degradation | ✅ Complete |
@@ -155,14 +155,14 @@ A stochastic model never directly controls infrastructure. Only the deterministi
   NetFlow/traffic. The real Containerlab data plane is optional (`./run.sh --clab`).
 - Remediation is currently **open-loop**: Aether predicts and acts, but does not yet verify the
   action worked or auto-roll-back when the fault clears (the highest-leverage next build).
-- Full status vs. the problem statement is in [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md); the
+- Full status vs. the original requirements is in [`GAP_ANALYSIS.md`](GAP_ANALYSIS.md); the
   forward-looking backlog of gaps and ideas is in [`GAPS_AND_IDEAS.md`](GAPS_AND_IDEAS.md).
 
 ---
 
 ## The three operational questions
 
-The problem statement asks the NOC to answer three questions in real time. Every alert in
+The NOC has to answer three questions in real time. Every alert in
 Aether is rendered against them, and the dashboard **Overview** surfaces them directly:
 
 | | Question | How Aether answers |
@@ -372,7 +372,7 @@ air-gapped-mpls-copilot/
 │   └── README.md              # Phase 5 data-flow doc (ACP → explain → Q1/Q2/Q3)
 │
 ├── phase6-validation/
-│   └── run_scenarios.py       # PS-13 scenario validation suite (4 scenarios, --no-containerlab)
+│   └── run_scenarios.py       # Scenario validation suite (4 scenarios, --no-containerlab)
 │
 ├── COMMANDS.md                # Full run guide + feature verification checklist
 └── docs/

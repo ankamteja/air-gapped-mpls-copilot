@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run.sh — Start (or stop) the Project Aether stack (PS-13)
+# run.sh — Start (or stop) the Project Aether stack
 #
 # Usage:
 #   ./run.sh                  SYNTHETIC mode (no sudo, no Containerlab) — always

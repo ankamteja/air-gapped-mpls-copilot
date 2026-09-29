@@ -2,7 +2,7 @@
 # =============================================================================
 # scenario_runner.sh — Automated Validation Scenario Execution
 #
-# Runs the 4 evaluation scenarios from the ISRO hackathon problem statement:
+# Runs the 4 evaluation scenarios:
 #   Scenario 1: Progressive congestion buildup on a hub-spoke link
 #   Scenario 2: BGP route flap with downstream path reroute cascade
 #   Scenario 3: Intermittent MPLS underlay failure with tunnel degradation
@@ -150,7 +150,6 @@ SCENARIO="${1:-all}"
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║     Project Aether — Validation Scenario Runner             ║"
-echo "║     Bharatiya Antariksh Hackathon 2026 (ISRO)               ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 echo "  Lab: $LAB"

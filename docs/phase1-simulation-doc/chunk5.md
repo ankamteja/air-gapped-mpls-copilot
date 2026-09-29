@@ -76,7 +76,7 @@ The `tc netem` and `tc tbf` disciplines are applied **inside the container's net
 
 ## Validation Scenarios
 
-These scenarios map directly to the **Phase 6** validation requirements from the problem statement:
+These scenarios map directly to the **Phase 6** validation requirements of the project:
 
 | Scenario | Fault sequence | Expected LSTM class | Graph model response |
 |---|---|---|---|
